@@ -30,20 +30,15 @@
         </div>
         <div class="hero-meta">
           <div id="clock" class="clock">—</div>
-          <div class="src">data · CoinMetrics · daily</div>
+          <div class="src">data · bitcoin-data.com · BTC</div>
         </div>
       </header>
 
       <div class="grid-controls">
-        <span class="gc-lab">เหรียญ</span>
-        <div class="sort-seg" id="asset-seg">
-          <button data-asset="btc" class="active">Bitcoin</button>
-          <button data-asset="eth">Ethereum</button>
-        </div>
         <span class="gc-lab">กราฟ</span>
         <div class="sort-seg" id="metric-seg">
-          <button data-metric="mvrv" class="active">MVRV Ratio</button>
-          <button data-metric="z">MVRV Z-Score</button>
+          <button data-metric="z" class="active">MVRV Z-Score</button>
+          <button data-metric="mvrv">MVRV Ratio</button>
         </div>
       </div>
 
@@ -51,19 +46,19 @@
 
       <div class="stat-cards">
         <div class="stat">
-          <div class="k">MVRV Ratio ตอนนี้</div>
-          <div class="v" id="mvrv-val">—</div>
-          <div class="s" id="mvrv-zone">—</div>
-        </div>
-        <div class="stat">
           <div class="k">MVRV Z-Score ตอนนี้</div>
           <div class="v" id="z-val">—</div>
           <div class="s" id="z-zone">—</div>
         </div>
         <div class="stat">
-          <div class="k">มูลค่าตลาด (Market Cap)</div>
-          <div class="v" id="mc-val">—</div>
-          <div class="s">realized cap: <span id="rc-val">—</span></div>
+          <div class="k">MVRV Ratio ตอนนี้</div>
+          <div class="v" id="mvrv-val">—</div>
+          <div class="s" id="mvrv-zone">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">ช่วง Z-Score ในอดีต</div>
+          <div class="v" id="z-range" style="font-size:22px">—</div>
+          <div class="s">ต่ำสุด … สูงสุด ตลอดประวัติ</div>
         </div>
       </div>
 

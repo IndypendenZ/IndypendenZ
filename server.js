@@ -711,61 +711,65 @@ app.get("/api/signal", async (_req, res) => {
   }
 });
 
-// ===== MVRV (Market Value to Realized Value) จาก CoinMetrics community API =====
-async function fetchMvrv(asset) {
-  const url =
-    `https://community-api.coinmetrics.io/v4/timeseries/asset-metrics` +
-    `?assets=${asset}&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=10000`;
-  const r = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    },
+// ===== MVRV (Market Value to Realized Value) จาก bitcoin-data.com (ฟรี, BTC) =====
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+// ดึง metric จาก bitcoin-data.com แบบยืดหยุ่น (หา field วันที่ + ค่าเอง)
+async function fetchBD(slug) {
+  const r = await fetch(`https://bitcoin-data.com/v1/${slug}`, {
+    headers: { accept: "application/json", "user-agent": BROWSER_UA },
   });
-  if (!r.ok) {
-    let msg = `CoinMetrics ${r.status}`;
-    try {
-      const j = await r.json();
-      if (j?.error?.message) msg += ": " + j.error.message;
-    } catch {}
-    throw new Error(msg);
-  }
-  const j = await r.json();
-  const rows = (j.data || [])
-    .map((d) => ({
-      t: d.time.slice(0, 10),
-      mc: parseFloat(d.CapMrktCurUSD),
-      rc: parseFloat(d.CapRealUSD),
-    }))
-    .filter((d) => isFinite(d.mc) && isFinite(d.rc) && d.rc > 0);
-  if (rows.length < 30) throw new Error("ข้อมูล MVRV ไม่พอ");
-  const mcs = rows.map((d) => d.mc);
-  const mean = mcs.reduce((a, b) => a + b, 0) / mcs.length;
-  const std = Math.sqrt(mcs.reduce((a, b) => a + (b - mean) ** 2, 0) / mcs.length);
-  const series = rows.map((d) => ({
-    t: d.t,
-    mvrv: d.mc / d.rc,
-    z: (d.mc - d.rc) / std,
-  }));
-  const lastRow = rows[rows.length - 1];
-  const last = series[series.length - 1];
-  return {
-    asset,
-    current: { ...last, mc: lastRow.mc, rc: lastRow.rc },
-    series,
-  };
+  if (!r.ok) throw new Error(`bitcoin-data ${slug} ${r.status}`);
+  const arr = await r.json();
+  if (!Array.isArray(arr)) throw new Error("รูปแบบข้อมูลไม่ถูกต้อง");
+  return arr
+    .map((it) => {
+      const t =
+        it.d ||
+        it.theDay ||
+        it.date ||
+        (it.unixTs ? new Date(Number(it.unixTs) * 1000).toISOString().slice(0, 10) : null);
+      let v = null;
+      for (const [k, val] of Object.entries(it)) {
+        if (["d", "theDay", "date", "unixTs"].includes(k)) continue;
+        const n = parseFloat(val);
+        if (isFinite(n)) {
+          v = n;
+          break;
+        }
+      }
+      return { t, v };
+    })
+    .filter((x) => x.t && x.v != null);
 }
 
-app.get("/api/mvrv", async (req, res) => {
-  const asset = (req.query.asset || "btc").toLowerCase();
-  if (!["btc", "eth"].includes(asset))
-    return res.status(400).json({ error: "รองรับเฉพาะ btc / eth" });
-  const key = `mvrv:${asset}`;
+app.get("/api/mvrv", async (_req, res) => {
+  const key = "mvrv:btc";
   const cached = getCached(key, 3600_000); // แคช 1 ชม.
   if (cached) return res.json(cached);
   try {
-    const data = await fetchMvrv(asset);
+    const z = await fetchBD("mvrv-zscore");
+    if (z.length < 30) throw new Error("ข้อมูล MVRV ไม่พอ");
+    // โบนัส: MVRV ratio (ถ้ามี endpoint)
+    let ratioMap = null;
+    try {
+      const m = await fetchBD("mvrv");
+      if (m.length) ratioMap = new Map(m.map((p) => [p.t, p.v]));
+    } catch {
+      /* ไม่มีก็ไม่เป็นไร แสดงแค่ Z-Score */
+    }
+    const series = z.map((p) => ({
+      t: p.t,
+      z: p.v,
+      mvrv: ratioMap ? ratioMap.get(p.t) ?? null : null,
+    }));
+    const data = {
+      asset: "btc",
+      hasRatio: Boolean(ratioMap),
+      current: series[series.length - 1],
+      series,
+    };
     setCached(key, data);
     res.json(data);
   } catch (e) {

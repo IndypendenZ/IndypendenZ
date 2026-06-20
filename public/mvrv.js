@@ -1,13 +1,5 @@
-const state = { asset: "btc", metric: "mvrv", data: null, chart: null };
+const state = { metric: "z", data: null, chart: null };
 const $ = (s) => document.querySelector(s);
-
-const fmtBig = (v) => {
-  const a = Math.abs(v);
-  if (a >= 1e12) return "$" + (v / 1e12).toFixed(2) + "T";
-  if (a >= 1e9) return "$" + (v / 1e9).toFixed(2) + "B";
-  if (a >= 1e6) return "$" + (v / 1e6).toFixed(2) + "M";
-  return "$" + Math.round(v).toLocaleString("en-US");
-};
 
 const AMBER = "#e0a93c";
 function mvrvZone(v) {
@@ -26,33 +18,48 @@ function zZone(v) {
 async function load() {
   $("#statusbar").textContent = "กำลังโหลดข้อมูล…";
   try {
-    const r = await fetch(`/api/mvrv?asset=${state.asset}`);
+    const r = await fetch("/api/mvrv");
     if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     state.data = await r.json();
     render();
   } catch (e) {
-    $("#statusbar").innerHTML = `<span style="color:var(--red)">โหลดไม่สำเร็จ: ${e.message}</span> — ต้องเข้าถึง community-api.coinmetrics.io (ปกติบนเครื่องตัวเองได้)`;
+    $("#statusbar").innerHTML = `<span style="color:var(--red)">โหลดไม่สำเร็จ: ${e.message}</span> — ต้องเข้าถึง bitcoin-data.com (ปกติบนเครื่องตัวเองได้)`;
   }
 }
 
 function render() {
   const d = state.data;
   const c = d.current;
-  const mz = mvrvZone(c.mvrv);
-  const zz = zZone(c.z);
 
-  $("#mvrv-val").textContent = c.mvrv.toFixed(2);
-  $("#mvrv-val").style.color = mz.color;
-  $("#mvrv-zone").textContent = mz.label;
+  // Z-Score (มีเสมอ)
+  const zz = zZone(c.z);
   $("#z-val").textContent = c.z.toFixed(2);
   $("#z-val").style.color = zz.color;
   $("#z-zone").textContent = zz.label;
-  $("#mc-val").textContent = fmtBig(c.mc);
-  $("#rc-val").textContent = fmtBig(c.rc);
+
+  // MVRV ratio (ถ้ามี)
+  if (d.hasRatio && c.mvrv != null) {
+    const mz = mvrvZone(c.mvrv);
+    $("#mvrv-val").textContent = c.mvrv.toFixed(2);
+    $("#mvrv-val").style.color = mz.color;
+    $("#mvrv-zone").textContent = mz.label;
+  } else {
+    $("#mvrv-val").textContent = "—";
+    $("#mvrv-zone").textContent = "ไม่มีข้อมูลฟรี (ใช้ Z-Score แทน)";
+    // ซ่อนปุ่ม MVRV ratio ถ้าไม่มีข้อมูล
+    const btn = document.querySelector('#metric-seg button[data-metric="mvrv"]');
+    if (btn) btn.style.display = "none";
+    state.metric = "z";
+    document.querySelector('#metric-seg button[data-metric="z"]')?.classList.add("active");
+  }
+
+  // ช่วง Z ในอดีต
+  const zs = d.series.map((p) => p.z);
+  $("#z-range").textContent = `${Math.min(...zs).toFixed(1)} … ${Math.max(...zs).toFixed(1)}`;
 
   $("#statusbar").innerHTML =
     `<span style="color:var(--green)">●</span> อัปเดตล่าสุด ${c.t}` +
-    `<span class="sep">|</span> ${d.asset.toUpperCase()}` +
+    `<span class="sep">|</span> BTC` +
     `<span class="sep">|</span> ${d.series.length.toLocaleString()} วัน`;
   $("#clock").textContent = c.t;
 
@@ -61,11 +68,11 @@ function render() {
 
 function renderChart() {
   const d = state.data;
-  const m = state.metric; // "mvrv" | "z"
-  const labels = d.series.map((p) => p.t);
-  const values = d.series.map((p) => p[m]);
+  const m = d.hasRatio ? state.metric : "z";
+  const pts = d.series.filter((p) => p[m] != null);
+  const labels = pts.map((p) => p.t);
+  const values = pts.map((p) => p[m]);
   const refs = m === "mvrv" ? [1, 3.7] : [0, 7];
-  const refColors = m === "mvrv" ? ["#35c184", "#ef5b52"] : ["#35c184", "#ef5b52"];
 
   if (state.chart) state.chart.destroy();
   const ctx = $("#chart").getContext("2d");
@@ -81,11 +88,10 @@ function renderChart() {
     ...refs.map((y, i) => ({
       label: `เกณฑ์ ${y}`,
       data: values.map(() => y),
-      borderColor: refColors[i],
+      borderColor: i === 0 ? "#35c184" : "#ef5b52",
       borderWidth: 1,
       borderDash: [6, 5],
       pointRadius: 0,
-      fill: false,
     })),
   ];
 
@@ -113,14 +119,6 @@ function renderChart() {
       : `เส้นประ <b class="g">เขียว = 0</b> (โซน底) · <b class="r">แดง = 7</b> (โซนฟอง)`;
 }
 
-document.querySelectorAll("#asset-seg button").forEach((b) =>
-  b.addEventListener("click", () => {
-    document.querySelectorAll("#asset-seg button").forEach((x) => x.classList.remove("active"));
-    b.classList.add("active");
-    state.asset = b.dataset.asset;
-    load();
-  })
-);
 document.querySelectorAll("#metric-seg button").forEach((b) =>
   b.addEventListener("click", () => {
     document.querySelectorAll("#metric-seg button").forEach((x) => x.classList.remove("active"));

@@ -11,7 +11,7 @@
 - 📐 **RSI Scanner** — คำนวณ RSI(14) ของเหรียญ Top 25 เลือกช่วงเวลา 5นาที/1ชม/1วัน + กรอง Oversold/Overbought
 - 🔔 **RSI Signal + Backtest** (หน้า `/signal.html`) — กลยุทธ์ RSI 55/45 long-only, ราคา+RSI สดผ่าน Binance WebSocket, backtest เทียบ Buy&Hold (CAGR/Sharpe/MDD) · ใช้ข้อมูล Binance ไม่ต้องมี key
 - 🧪 **เปรียบเทียบ 5 กลยุทธ์** — RSI 55/45, RSI+กรองเทรนด์ EMA200, MA Cross 50/200, MACD, Donchian 20/10 + แถบสัญญาณรวมต่อเหรียญ
-- 📈 **MVRV** (หน้า `/mvrv.html`) — MVRV ratio + MVRV Z-Score ของ BTC/ETH จาก CoinMetrics (ฟรี ไม่ต้องมี key) บอกว่าตลาดแพง/ถูกเกินมูลค่าจริง + กราฟย้อนหลัง
+- 📈 **MVRV** (หน้า `/mvrv.html`) — MVRV Z-Score (+ MVRV ratio ถ้ามี) ของ BTC จาก bitcoin-data.com (ฟรี ไม่ต้องมี key) บอกว่าตลาดแพง/ถูกเกินมูลค่าจริง + กราฟย้อนหลัง
 - 🤖 **วิเคราะห์ด้วย AI (Claude)** — สรุปข้อมูลรายเหรียญ + วิเคราะห์ภาพรวมตลาดทั้งหมด
 - 💬 **แชท AI** — ถาม-ตอบเรื่องคริปโตได้ทุกอย่าง (อ้างอิงราคาปัจจุบันได้)
 
@@ -108,7 +108,7 @@ CoinGecko แบบฟรีไม่ใส่ key มีลิมิตต่�
 | `GET /api/trending` | เหรียญมาแรง |
 | `GET /api/rsi?vs=usd&tf=1d` | สแกน RSI(14) เหรียญ Top 25 (tf: 5m/1h/1d) |
 | `GET /api/signal` | RSI Signal + backtest หลายกลยุทธ์ (Binance) |
-| `GET /api/mvrv?asset=btc` | MVRV ratio + Z-Score (CoinMetrics, btc/eth) |
+| `GET /api/mvrv` | MVRV Z-Score (+ratio) ของ BTC (bitcoin-data.com) |
 | `GET /api/status` | เช็คว่าเปิดใช้ AI ได้ไหม |
 | `POST /api/analyze` | Claude วิเคราะห์รายเหรียญ (สตรีม) |
 | `POST /api/market-analysis` | Claude วิเคราะห์ภาพรวมตลาด (สตรีม) |
