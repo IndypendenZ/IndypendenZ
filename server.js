@@ -74,9 +74,143 @@ app.get("/api/coin/:id/chart", async (req, res) => {
   }
 });
 
+// ---- ภาพรวมตลาดรวม + ดัชนี Fear & Greed ----
+app.get("/api/global", async (req, res) => {
+  const vs = (req.query.vs || "usd").toLowerCase();
+  const key = `global:${vs}`;
+  const cached = getCached(key, 60_000);
+  if (cached) return res.json(cached);
+  try {
+    const [g, fngJson] = await Promise.all([
+      cgFetch(`${COINGECKO}/global`),
+      fetch("https://api.alternative.me/fng/?limit=1")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+    const d = g.data || {};
+    const fng = fngJson?.data?.[0]
+      ? { value: Number(fngJson.data[0].value), label: fngJson.data[0].value_classification }
+      : null;
+    const data = {
+      vs,
+      total_market_cap: d.total_market_cap?.[vs],
+      total_volume: d.total_volume?.[vs],
+      market_cap_change_24h: d.market_cap_change_percentage_24h_usd,
+      btc_dominance: d.market_cap_percentage?.btc,
+      eth_dominance: d.market_cap_percentage?.eth,
+      active_cryptos: d.active_cryptocurrencies,
+      fng,
+    };
+    setCached(key, data);
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ---- เหรียญมาแรง (Trending) ----
+app.get("/api/trending", async (_req, res) => {
+  const cached = getCached("trending", 120_000);
+  if (cached) return res.json(cached);
+  try {
+    const t = await cgFetch(`${COINGECKO}/search/trending`);
+    const coins = (t.coins || []).slice(0, 10).map((c) => ({
+      id: c.item.id,
+      name: c.item.name,
+      symbol: c.item.symbol,
+      thumb: c.item.thumb,
+      rank: c.item.market_cap_rank,
+      change24h: c.item.data?.price_change_percentage_24h?.usd,
+    }));
+    setCached("trending", coins);
+    res.json(coins);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ---- บอกหน้าเว็บว่ามี Claude พร้อมใช้ไหม ----
 app.get("/api/status", (_req, res) => {
   res.json({ aiEnabled: Boolean(anthropic) });
+});
+
+// helper: สตรีมคำตอบจาก Claude ออกทาง response
+async function streamClaude(res, { system, messages, maxTokens = 1200, effort = "low" }) {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  try {
+    const stream = anthropic.messages.stream({
+      model: "claude-opus-4-8",
+      max_tokens: maxTokens,
+      thinking: { type: "adaptive" },
+      output_config: { effort },
+      system,
+      messages,
+    });
+    stream.on("text", (delta) => res.write(delta));
+    await stream.finalMessage();
+    res.end();
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+    else {
+      res.write(`\n\n[เกิดข้อผิดพลาด: ${e.message}]`);
+      res.end();
+    }
+  }
+}
+
+// ---- แชทถาม-ตอบเรื่องคริปโตกับ AI ----
+app.post("/api/chat", async (req, res) => {
+  if (!anthropic)
+    return res.status(503).json({ error: "ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์" });
+  const { messages = [], snapshot = null } = req.body || {};
+  const clean = messages
+    .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .slice(-12);
+  if (!clean.length) return res.status(400).json({ error: "ไม่มีข้อความ" });
+
+  let system =
+    "คุณเป็นผู้ช่วย AI เรื่องคริปโตเคอเรนซี ตอบเป็นภาษาไทย กระชับ เข้าใจง่าย เป็นกลาง " +
+    "อธิบายเชิงการศึกษา ห้ามชี้นำให้ซื้อหรือขายแบบฟันธง " +
+    "ถ้าพูดถึงการลงทุน ให้เตือนว่าเป็นข้อมูลเชิงการศึกษา ไม่ใช่คำแนะนำการลงทุน";
+  if (snapshot) {
+    system +=
+      "\n\nนี่คือข้อมูลตลาดล่าสุด (ใช้อ้างอิงราคาปัจจุบันได้):\n```json\n" +
+      JSON.stringify(snapshot).slice(0, 4000) +
+      "\n```";
+  }
+  await streamClaude(res, { system, messages: clean, maxTokens: 1200, effort: "low" });
+});
+
+// ---- AI วิเคราะห์ภาพรวมตลาดทั้งหมด ----
+app.post("/api/market-analysis", async (req, res) => {
+  if (!anthropic)
+    return res.status(503).json({ error: "ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์" });
+  const { global: g = null, top = [], vs = "usd" } = req.body || {};
+  const facts = {
+    สกุลเงิน: vs.toUpperCase(),
+    ภาพรวม: g,
+    เหรียญ10อันดับแรก: (top || []).slice(0, 10).map((c) => ({
+      ชื่อ: c.name,
+      สัญลักษณ์: (c.symbol || "").toUpperCase(),
+      ราคา: c.current_price,
+      เปลี่ยน24ชม_pct: c.price_change_percentage_24h_in_currency,
+    })),
+  };
+  const system =
+    "คุณเป็นผู้ช่วยวิเคราะห์ภาพรวมตลาดคริปโตเชิงการศึกษา ภาษาไทย " +
+    "อธิบายสิ่งที่ข้อมูลกำลังบอกอย่างเป็นกลาง ชี้ทั้งด้านบวกและความเสี่ยง " +
+    "ห้ามชี้นำซื้อ/ขาย ปิดท้ายด้วยคำเตือนว่าไม่ใช่คำแนะนำการลงทุน";
+  const userPrompt =
+    "ช่วยสรุปภาพรวมตลาดคริปโตตอนนี้จากข้อมูลนี้ เป็นภาษาไทยอ่านง่าย:\n\n```json\n" +
+    JSON.stringify(facts, null, 2) +
+    "\n```\n\nจัดเป็นหัวข้อ: 1) อารมณ์ตลาดโดยรวม 2) สัญญาณที่น่าสนใจ 3) สิ่งที่ต้องระวัง 4) คำเตือน";
+  await streamClaude(res, {
+    system,
+    messages: [{ role: "user", content: userPrompt }],
+    maxTokens: 1500,
+    effort: "medium",
+  });
 });
 
 // ---- AI วิเคราะห์ข้อมูลตลาด (สตรีมข้อความกลับมา) ----

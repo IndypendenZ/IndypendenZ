@@ -8,6 +8,8 @@ const state = {
   aiEnabled: false,
   current: null, // เหรียญที่เปิดในโมดัล
   chart: null,
+  global: null, // ข้อมูลภาพรวมตลาด
+  chatHistory: [], // ประวัติแชท AI
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -76,6 +78,207 @@ function setStatus(msg, isError = false) {
   el.textContent = msg;
   el.classList.toggle("error", isError);
 }
+
+// ===== ภาพรวมตลาด =====
+async function loadGlobal() {
+  try {
+    const r = await fetch(`/api/global?vs=${state.vs}`);
+    if (!r.ok) throw new Error();
+    state.global = await r.json();
+    renderOverview();
+  } catch {
+    $("#overview").innerHTML = "";
+  }
+}
+
+function fngColor(v) {
+  if (v >= 75) return "#16c784";
+  if (v >= 55) return "#7bc043";
+  if (v >= 45) return "#f0b90b";
+  if (v >= 25) return "#f0883e";
+  return "#ea3943";
+}
+
+function renderOverview() {
+  const g = state.global;
+  if (!g) return;
+  const chg = g.market_cap_change_24h;
+  const chgCls = (chg ?? 0) >= 0 ? "pos" : "neg";
+  const fng = g.fng;
+  const aiCard = state.aiEnabled
+    ? `<div class="ov-card action"><button id="market-analyze-btn">🤖 วิเคราะห์ตลาด</button></div>`
+    : "";
+  $("#overview").innerHTML = `
+    <div class="ov-card">
+      <div class="ov-label">มูลค่าตลาดรวม</div>
+      <div class="ov-value">${fmtBig(g.total_market_cap)}</div>
+      <div class="ov-sub ${chgCls}">${chg == null ? "" : (chg >= 0 ? "▲ " : "▼ ") + Math.abs(chg).toFixed(2) + "% (24ชม)"}</div>
+    </div>
+    <div class="ov-card">
+      <div class="ov-label">ปริมาณซื้อขาย 24ชม</div>
+      <div class="ov-value">${fmtBig(g.total_volume)}</div>
+      <div class="ov-sub muted">${g.active_cryptos ? g.active_cryptos.toLocaleString() + " เหรียญ" : ""}</div>
+    </div>
+    <div class="ov-card">
+      <div class="ov-label">ครองตลาด (Dominance)</div>
+      <div class="ov-value">BTC ${g.btc_dominance ? g.btc_dominance.toFixed(1) : "—"}%</div>
+      <div class="ov-sub muted">ETH ${g.eth_dominance ? g.eth_dominance.toFixed(1) : "—"}%</div>
+    </div>
+    ${
+      fng
+        ? `<div class="ov-card fng">
+            <div class="gauge" style="--val:${fng.value};--col:${fngColor(fng.value)}"><span>${fng.value}</span></div>
+            <div>
+              <div class="ov-label">Fear &amp; Greed</div>
+              <div class="ov-value" style="color:${fngColor(fng.value)}">${fng.label}</div>
+            </div>
+          </div>`
+        : ""
+    }
+    ${aiCard}
+  `;
+  const btn = $("#market-analyze-btn");
+  if (btn) btn.addEventListener("click", analyzeMarket);
+}
+
+// ===== เหรียญมาแรง =====
+async function loadTrending() {
+  try {
+    const r = await fetch("/api/trending");
+    if (!r.ok) throw new Error();
+    const coins = await r.json();
+    if (!coins.length) return;
+    $("#trending").innerHTML = coins
+      .map(
+        (c) => `<div class="trend-chip" data-trend="${c.id}">
+          <img src="${c.thumb}" alt=""/><b>${c.symbol.toUpperCase()}</b>
+          ${pct(c.change24h)}
+        </div>`
+      )
+      .join("");
+    $("#trending-wrap").classList.remove("hidden");
+  } catch {}
+}
+
+$("#trending").addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-trend]");
+  if (chip && state.coins.find((c) => c.id === chip.dataset.trend))
+    openModal(chip.dataset.trend);
+});
+
+// ===== ตัวช่วยสตรีมข้อความจาก backend =====
+async function streamPost(url, payload, onChunk) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok || !r.body) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || r.statusText);
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onChunk(dec.decode(value, { stream: true }));
+  }
+}
+
+// ===== AI วิเคราะห์ภาพรวมตลาด =====
+async function analyzeMarket() {
+  const btn = $("#market-analyze-btn");
+  const box = $("#market-ai");
+  const out = $("#market-ai-output");
+  box.classList.remove("hidden");
+  out.textContent = "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "กำลังวิเคราะห์…";
+  }
+  try {
+    await streamPost(
+      "/api/market-analysis",
+      { global: state.global, top: state.coins.slice(0, 10), vs: state.vs },
+      (t) => {
+        out.textContent += t;
+      }
+    );
+  } catch (e) {
+    out.textContent = "เกิดข้อผิดพลาด: " + e.message;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "🤖 วิเคราะห์ตลาดอีกครั้ง";
+    }
+  }
+}
+
+// ===== แชท AI =====
+function addChatMsg(role, text) {
+  const log = $("#chat-log");
+  const div = document.createElement("div");
+  div.className = "chat-msg " + (role === "user" ? "user" : "bot");
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+$("#chat-fab").addEventListener("click", () => {
+  $("#chat-panel").classList.toggle("hidden");
+  if (!$("#chat-panel").classList.contains("hidden")) $("#chat-input").focus();
+});
+$("#chat-close").addEventListener("click", () =>
+  $("#chat-panel").classList.add("hidden")
+);
+
+$("#chat-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  if (!state.aiEnabled) {
+    addChatMsg("bot", "⚠️ ต้องตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์ก่อนถึงจะใช้แชทได้");
+    return;
+  }
+  input.value = "";
+  addChatMsg("user", text);
+  state.chatHistory.push({ role: "user", content: text });
+  const sendBtn = $("#chat-form button");
+  sendBtn.disabled = true;
+
+  const botDiv = addChatMsg("bot", "…");
+  let acc = "";
+  // ส่ง snapshot ตลาดล่าสุดให้ AI อ้างอิงราคาปัจจุบันได้
+  const snapshot = {
+    global: state.global,
+    top: state.coins.slice(0, 12).map((c) => ({
+      name: c.name,
+      symbol: c.symbol,
+      price: c.current_price,
+      change24h: c.price_change_percentage_24h_in_currency,
+    })),
+    currency: state.vs,
+  };
+  try {
+    await streamPost(
+      "/api/chat",
+      { messages: state.chatHistory.slice(-12), snapshot },
+      (t) => {
+        acc += t;
+        botDiv.textContent = acc;
+        $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
+      }
+    );
+    state.chatHistory.push({ role: "assistant", content: acc });
+  } catch (err) {
+    botDiv.textContent = "เกิดข้อผิดพลาด: " + err.message;
+  } finally {
+    sendBtn.disabled = false;
+  }
+});
 
 // ===== กรองตามแท็บ/ค้นหา =====
 function visibleCoins() {
@@ -315,13 +518,18 @@ $("#search").addEventListener("input", (e) => {
   state.search = e.target.value.trim();
   render();
 });
-$("#refresh").addEventListener("click", loadMarkets);
+function reloadAll() {
+  loadMarkets();
+  loadGlobal();
+  loadTrending();
+}
+$("#refresh").addEventListener("click", reloadAll);
 document.querySelectorAll("#currency button").forEach((b) =>
   b.addEventListener("click", () => {
     document.querySelectorAll("#currency button").forEach((x) => x.classList.remove("active"));
     b.classList.add("active");
     state.vs = b.dataset.vs;
-    loadMarkets();
+    reloadAll();
   })
 );
 document.querySelectorAll(".tabs button").forEach((b) =>
@@ -342,8 +550,17 @@ async function init() {
     const s = await fetch("/api/status").then((r) => r.json());
     state.aiEnabled = s.aiEnabled;
   } catch {}
+  if (!state.aiEnabled) {
+    // ไม่มี API key → ซ่อนปุ่มแชท AI
+    $("#chat-fab").classList.add("hidden");
+  }
   await loadMarkets();
+  loadGlobal();
+  loadTrending();
   // รีเฟรชอัตโนมัติทุก 60 วิ
-  setInterval(loadMarkets, 60_000);
+  setInterval(() => {
+    loadMarkets();
+    loadGlobal();
+  }, 60_000);
 }
 init();

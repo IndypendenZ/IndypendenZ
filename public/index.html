@@ -44,6 +44,19 @@
 
     <main>
       <div id="status-bar" class="status-bar"></div>
+
+      <!-- ภาพรวมตลาด -->
+      <section id="overview" class="overview"></section>
+      <div id="market-ai" class="market-ai hidden">
+        <div class="ai-output" id="market-ai-output"></div>
+      </div>
+
+      <!-- เหรียญมาแรง -->
+      <div id="trending-wrap" class="trending-wrap hidden">
+        <span class="trending-label">🔥 มาแรง</span>
+        <div id="trending" class="trending"></div>
+      </div>
+
       <div class="table-wrap">
         <table id="market-table">
           <thead>
@@ -109,6 +122,29 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- แชท AI -->
+    <button id="chat-fab" class="chat-fab" title="ถาม AI">🤖</button>
+    <div id="chat-panel" class="chat-panel hidden">
+      <div class="chat-head">
+        <span>🤖 ผู้ช่วยคริปโต AI</span>
+        <button id="chat-close" type="button">✕</button>
+      </div>
+      <div id="chat-log" class="chat-log">
+        <div class="chat-msg bot">
+          สวัสดีครับ ถามอะไรเกี่ยวกับคริปโตได้เลย เช่น "Bitcoin คืออะไร",
+          "ตอนนี้ตลาดเป็นยังไง", "DeFi ทำงานยังไง"
+        </div>
+      </div>
+      <form id="chat-form" class="chat-form">
+        <input
+          id="chat-input"
+          placeholder="พิมพ์คำถาม…"
+          autocomplete="off"
+        />
+        <button type="submit">ส่ง</button>
+      </form>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
