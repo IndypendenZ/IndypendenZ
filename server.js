@@ -711,6 +711,57 @@ app.get("/api/signal", async (_req, res) => {
   }
 });
 
+// ===== MVRV (Market Value to Realized Value) จาก CoinMetrics community API =====
+async function fetchMvrv(asset) {
+  const url =
+    `https://community-api.coinmetrics.io/v4/timeseries/asset-metrics` +
+    `?assets=${asset}&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=10000`;
+  const r = await fetch(url, { headers: { accept: "application/json" } });
+  if (!r.ok) throw new Error(`CoinMetrics ${r.status}`);
+  const j = await r.json();
+  const rows = (j.data || [])
+    .map((d) => ({
+      t: d.time.slice(0, 10),
+      mc: parseFloat(d.CapMrktCurUSD),
+      rc: parseFloat(d.CapRealUSD),
+    }))
+    .filter((d) => isFinite(d.mc) && isFinite(d.rc) && d.rc > 0);
+  if (rows.length < 30) throw new Error("ข้อมูล MVRV ไม่พอ");
+  const mcs = rows.map((d) => d.mc);
+  const mean = mcs.reduce((a, b) => a + b, 0) / mcs.length;
+  const std = Math.sqrt(mcs.reduce((a, b) => a + (b - mean) ** 2, 0) / mcs.length);
+  const series = rows.map((d) => ({
+    t: d.t,
+    mvrv: d.mc / d.rc,
+    z: (d.mc - d.rc) / std,
+  }));
+  const lastRow = rows[rows.length - 1];
+  const last = series[series.length - 1];
+  return {
+    asset,
+    current: { ...last, mc: lastRow.mc, rc: lastRow.rc },
+    series,
+  };
+}
+
+app.get("/api/mvrv", async (req, res) => {
+  const asset = (req.query.asset || "btc").toLowerCase();
+  if (!["btc", "eth"].includes(asset))
+    return res.status(400).json({ error: "รองรับเฉพาะ btc / eth" });
+  const key = `mvrv:${asset}`;
+  const cached = getCached(key, 3600_000); // แคช 1 ชม.
+  if (cached) return res.json(cached);
+  try {
+    const data = await fetchMvrv(asset);
+    setCached(key, data);
+    res.json(data);
+  } catch (e) {
+    const stale = getStale(key);
+    if (stale) return res.json(stale);
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // helper: สตรีมคำตอบจาก Claude ออกทาง response
 async function streamClaude(res, { system, messages, maxTokens = 1200, effort = "low" }) {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");

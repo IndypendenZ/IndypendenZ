@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MVRV · มูลค่าตลาดเทียบมูลค่าจริง</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,500&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/signal.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="back" href="/">← กลับแดชบอร์ด</a>
+      <a class="back" href="/signal.html" style="margin-left:14px">RSI Signal →</a>
+
+      <header class="hero">
+        <div class="hero-main">
+          <div class="eyebrow">ON-CHAIN VALUATION</div>
+          <h1><span class="btc">₿</span> MVRV</h1>
+          <p class="lead">
+            <em class="hl">MVRV (Market Value to Realized Value)</em> =
+            มูลค่าตลาด ÷ มูลค่าที่แท้จริง (realized cap) — บอกว่าตอนนี้ตลาด
+            "แพง/ถูกเกินมูลค่าจริง" แค่ไหน · ค่าสูงมาก = ผู้ถือกำไรเฉลี่ยเยอะ
+            (มักใกล้จุดสูงสุด) · ต่ำกว่า 1 = ผู้ถือขาดทุนเฉลี่ย (มักเป็นโซนสะสม)
+          </p>
+        </div>
+        <div class="hero-meta">
+          <div id="clock" class="clock">—</div>
+          <div class="src">data · CoinMetrics · daily</div>
+        </div>
+      </header>
+
+      <div class="grid-controls">
+        <span class="gc-lab">เหรียญ</span>
+        <div class="sort-seg" id="asset-seg">
+          <button data-asset="btc" class="active">Bitcoin</button>
+          <button data-asset="eth">Ethereum</button>
+        </div>
+        <span class="gc-lab">กราฟ</span>
+        <div class="sort-seg" id="metric-seg">
+          <button data-metric="mvrv" class="active">MVRV Ratio</button>
+          <button data-metric="z">MVRV Z-Score</button>
+        </div>
+      </div>
+
+      <div id="statusbar" class="statusbar">กำลังโหลดข้อมูล…</div>
+
+      <div class="stat-cards">
+        <div class="stat">
+          <div class="k">MVRV Ratio ตอนนี้</div>
+          <div class="v" id="mvrv-val">—</div>
+          <div class="s" id="mvrv-zone">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">MVRV Z-Score ตอนนี้</div>
+          <div class="v" id="z-val">—</div>
+          <div class="s" id="z-zone">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">มูลค่าตลาด (Market Cap)</div>
+          <div class="v" id="mc-val">—</div>
+          <div class="s">realized cap: <span id="rc-val">—</span></div>
+        </div>
+      </div>
+
+      <div class="mvrv-chart">
+        <canvas id="chart"></canvas>
+      </div>
+      <p class="filter-note" id="chart-note"></p>
+
+      <div class="two-col">
+        <div class="info-box">
+          <h3>อ่านค่า MVRV ยังไง</h3>
+          <ul>
+            <li><b class="g">&lt; 1.0</b> — ราคาต่ำกว่าทุนเฉลี่ยของตลาด (ผู้ถือขาดทุน) · มักเป็นโซน "สะสม/底"</li>
+            <li><b>1.0 – 2.4</b> — ปกติ</li>
+            <li><b style="color:#e0a93c">2.4 – 3.7</b> — เริ่มแพง ตลาดร้อนขึ้น</li>
+            <li><b class="r">&gt; 3.7</b> — แพงมาก · ในอดีตมักใกล้ "จุดสูงสุด" ของรอบ</li>
+          </ul>
+        </div>
+        <div class="info-box">
+          <h3>MVRV Z-Score คืออะไร</h3>
+          <p>
+            ปรับ MVRV ให้เทียบกับความผันผวนทั้งประวัติ:
+            <em class="hl">Z = (มูลค่าตลาด − realized cap) ÷ ส่วนเบี่ยงเบนของมูลค่าตลาด</em>
+          </p>
+          <ul>
+            <li><b class="r">&gt; 7</b> — โซนฟอง ในอดีตมักเป็นจุดขายทำกำไร</li>
+            <li><b>0 – 7</b> — ปกติ</li>
+            <li><b class="g">&lt; 0.1</b> — โซน底 ในอดีตมักเป็นโอกาสสะสม</li>
+          </ul>
+        </div>
+      </div>
+
+      <footer class="foot">
+        CryptoDash · MVRV · ข้อมูล CoinMetrics community ·
+        <b>เพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน</b> ·
+        on-chain metric ไม่รับประกันอนาคต
+      </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="/mvrv.js"></script>
+  </body>
+</html>

@@ -607,6 +607,16 @@ h1 {
   padding-top: 22px;
 }
 
+/* ---- MVRV chart ---- */
+.mvrv-chart {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  height: 380px;
+  margin-bottom: 8px;
+}
+
 /* ---- AI ---- */
 .ai-bar {
   margin-top: 14px;
