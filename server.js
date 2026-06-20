@@ -25,6 +25,15 @@ const STABLE = new Set([
   "USTC", "EUR", "EURI", "AEUR", "XUSD", "USD1",
 ]);
 
+// เหรียญ wrapped/staked ที่ซ้ำกับตัวจริง (ตัดออกกันนับซ้ำ)
+const WRAPPED = new Set([
+  "WBTC", "WETH", "WEETH", "WSTETH", "STETH", "WBETH", "RETH", "CBETH",
+  "WBNB", "BSC-USD", "LBTC", "SOLVBTC", "BTCB",
+]);
+
+// จำนวนเหรียญ tier บน (เรียงตามมาร์เก็ตแคป) ที่ใช้ในหน้า RSI Signal
+const SIGNAL_COUNT = 20;
+
 // เกณฑ์คัดเหรียญ "ผ่านเกณฑ์" แบบเป็นกลาง (ไม่ดูผลกำไร → ไม่มี survivorship bias)
 const PASS_MIN_YEARS = 2; // ประวัติ ≥ 2 ปี (ตัดเหรียญใหม่/ปั่น)
 const PASS_MAX_VOL = 1.5; // ความผันผวน ≤ 150%/ปี (ตัดเหรียญสวิงแรงแบบมีคนปั่น)
@@ -583,15 +592,58 @@ async function binanceTopSymbols(n = 50) {
     .map((t) => ({ sym: t.base, vol: t.qv }));
 }
 
+// แผนที่ volume ของทุกคู่ USDT บน Binance (base -> quote volume)
+async function binanceUsdtVolMap() {
+  const r = await fetch(`${BINANCE}/api/v3/ticker/24hr`, {
+    headers: { accept: "application/json" },
+  });
+  if (!r.ok) throw new Error("Binance ticker error");
+  const arr = await r.json();
+  const map = new Map();
+  for (const t of arr) {
+    if (!t.symbol.endsWith("USDT")) continue;
+    const base = t.symbol.slice(0, -4);
+    if (!base || STABLE.has(base) || base.includes("USD")) continue;
+    if (/(UP|DOWN|BULL|BEAR)$/.test(base)) continue;
+    map.set(base, parseFloat(t.quoteVolume));
+  }
+  return map;
+}
+
+// Top N เหรียญตามมาร์เก็ตแคป (CoinGecko) ที่มีคู่ USDT บน Binance = "tier บน"
+async function topMarketCapBases(n, volMap) {
+  const mk = await cgFetch(
+    `${COINGECKO}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false`
+  );
+  const out = [];
+  const seen = new Set();
+  for (const c of mk) {
+    const base = (c.symbol || "").toUpperCase();
+    if (!base || STABLE.has(base) || WRAPPED.has(base) || seen.has(base)) continue;
+    if (!volMap.has(base)) continue; // ต้องมีคู่ USDT บน Binance (klines/ws ได้)
+    seen.add(base);
+    out.push({ sym: base, vol: volMap.get(base) });
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
 app.get("/api/signal", async (_req, res) => {
   const cached = getCached("signal", 600_000); // แคช 10 นาที
   if (cached) return res.json(cached);
   try {
+    // เลือกเหรียญ tier บน ตามมาร์เก็ตแคป (CoinGecko) ∩ คู่ USDT บน Binance
     let symbols;
     try {
-      symbols = await binanceTopSymbols(50);
+      const volMap = await binanceUsdtVolMap();
+      symbols = await topMarketCapBases(SIGNAL_COUNT, volMap);
+      if (!symbols.length) throw new Error("empty");
     } catch {
-      symbols = SIGNAL_COINS.map((s) => ({ sym: s, vol: 0 })); // สำรอง
+      try {
+        symbols = await binanceTopSymbols(SIGNAL_COUNT); // สำรอง: ตาม volume
+      } catch {
+        symbols = SIGNAL_COINS.map((s) => ({ sym: s, vol: 0 }));
+      }
     }
     const coins = [];
     for (const { sym: base, vol } of symbols) {

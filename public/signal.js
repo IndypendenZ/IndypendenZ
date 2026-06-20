@@ -113,9 +113,9 @@ function renderFilterNote() {
   const el = $("#filter-note");
   if (!m || !el) return;
   if (state.filterMode === "pass") {
-    el.innerHTML = `แสดงเฉพาะ <b>เหรียญที่ผ่านเกณฑ์</b> (${m.nPass}/${m.nAll}) — ประวัติ ≥ ${m.minYears} ปี และความผันผวน ≤ ${Math.round(m.maxVol * 100)}%/ปี · กรองแบบเป็นกลาง (ไม่ดูผลกำไร → ไม่มี survivorship bias)`;
+    el.innerHTML = `แสดงเฉพาะ <b>เหรียญที่ผ่านเกณฑ์</b> (${m.nPass}/${m.nAll}) — จาก ${m.nAll} เหรียญ tier บน (มาร์เก็ตแคป) เหลือเฉพาะที่ประวัติ ≥ ${m.minYears} ปี และผันผวน ≤ ${Math.round(m.maxVol * 100)}%/ปี · ไม่มี survivorship bias`;
   } else {
-    el.innerHTML = `แสดง <b>ทั้งหมด</b> (${m.nAll} เหรียญ Top by volume) — รวมเหรียญผันผวนสูง/ใหม่ที่สัญญาณอาจรบกวนมากกว่า`;
+    el.innerHTML = `แสดง <b>Top ${m.nAll} ตามมาร์เก็ตแคป (tier บน)</b> — เหรียญใหญ่ ปั่นยาก · บางตัวอาจยังผันผวน ดูค่า "ผันผวน %/ปี" บนการ์ดได้`;
   }
 }
 
