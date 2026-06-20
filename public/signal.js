@@ -5,6 +5,8 @@ const state = {
   fav: new Set(JSON.parse(localStorage.getItem("sig_fav") || "[]")),
   watch: new Set(JSON.parse(localStorage.getItem("sig_watch") || "[]")),
   sortBy: localStorage.getItem("sig_sort") || "signal",
+  filterMode: localStorage.getItem("sig_filter") || "pass",
+  meta: null,
 };
 
 function saveSets() {
@@ -58,7 +60,9 @@ async function load() {
     if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     const data = await r.json();
     state.coins = data.coins;
+    state.meta = data.meta || null;
     data.coins.forEach((c) => (state.bySym[c.sym] = { ...c, live: c.lastClose, chg: null }));
+    setFilterLabels();
     // จัดอันดับ volume (รายชื่อมาจาก Binance ที่เรียงตาม volume อยู่แล้ว)
     [...data.coins]
       .sort((a, b) => (b.vol ?? 0) - (a.vol ?? 0))
@@ -66,8 +70,8 @@ async function load() {
         if (state.bySym[c.sym]) state.bySym[c.sym].volRank = i + 1;
       });
     renderStatus(data);
-    renderOrder(data);
-    renderCards(data);
+    renderOrder();
+    renderCards();
     renderStats(data);
     renderStrategies(data);
     renderTable(data);
@@ -88,22 +92,39 @@ function renderStatus(d) {
     `<span class="sep">|</span> กลยุทธ์ <span class="v">RSI 55/45 · long-only</span>`;
 }
 
-function renderOrder(d) {
-  const longs = d.coins.filter((c) => c.state === "LONG").map((c) => c.sym);
+// เหรียญที่จะแสดง (ตามโหมดกรอง)
+function shownCoins() {
+  if (state.filterMode === "pass" && state.coins.some((c) => c.pass))
+    return state.coins.filter((c) => c.pass);
+  return state.coins;
+}
+
+function setFilterLabels() {
+  const m = state.meta;
+  if (!m) return;
+  const pf = document.querySelector('#filter-seg button[data-f="pass"]');
+  const af = document.querySelector('#filter-seg button[data-f="all"]');
+  if (pf) pf.textContent = `ผ่านเกณฑ์ (${m.nPass})`;
+  if (af) af.textContent = `ทั้งหมด (${m.nAll})`;
+}
+
+function renderOrder() {
+  const list = shownCoins();
+  const longs = list.filter((c) => c.state === "LONG").map((c) => c.sym);
   if (longs.length) {
     $("#order-title").innerHTML = `เข้าเกณฑ์ถือ: <span class="syms">${longs.join(", ")}</span>`;
-    $("#order-sub").textContent = `${longs.length} จาก ${d.coins.length} เหรียญ RSI > 55 · ที่เหลือถือเงินสด (RSI ยังไม่ผ่านเกณฑ์)`;
+    $("#order-sub").textContent = `${longs.length} จาก ${list.length} เหรียญ RSI > 55 · ที่เหลือถือเงินสด (RSI ยังไม่ผ่านเกณฑ์)`;
   } else {
     $("#order-title").innerHTML = `ทั้งหมดถือเงินสด <span class="syms">(CASH)</span>`;
-    $("#order-sub").textContent = `0 จาก ${d.coins.length} เหรียญที่ RSI > 55 — กลยุทธ์แนะให้ถือเงินสดทั้งหมดตอนนี้`;
+    $("#order-sub").textContent = `0 จาก ${list.length} เหรียญที่ RSI > 55 — กลยุทธ์แนะให้ถือเงินสดทั้งหมดตอนนี้`;
   }
 }
 
 const consensus = (c) => Object.values(c.signals).filter((s) => s === "LONG").length;
 
-function renderCards(d) {
+function renderCards() {
   // ⭐ โปรด → เข้าเกณฑ์ (LONG) → แล้วเรียงตามตัวเลือกภายในแต่ละกลุ่ม
-  const ordered = [...d.coins].sort((a, b) => {
+  const ordered = [...shownCoins()].sort((a, b) => {
     const af = state.fav.has(a.sym) ? 0 : 1;
     const bf = state.fav.has(b.sym) ? 0 : 1;
     if (af !== bf) return af - bf;
@@ -224,12 +245,13 @@ function updateCard(sym, price, chg) {
 
 function renderStats(d) {
   const p = d.portfolio;
+  const m = d.meta || {};
   const mult = p.totalRSI / p.invested;
   $("#stat-cards").innerHTML = `
     <div class="stat">
       <div class="k">เติม $10K/เหรียญ (รวม ${fmtBig(p.invested)}) → เป็น</div>
       <div class="v green">${fmtBig(p.totalRSI)}</div>
-      <div class="s">${mult.toFixed(1)}x ของเงินที่ลงทั้งหมด · กลยุทธ์ RSI</div>
+      <div class="s">${mult.toFixed(1)}x · ${m.nPass ?? p.n} เหรียญผ่านเกณฑ์ · track ${(m.trackYears ?? p.years).toFixed(1)} ปี</div>
     </div>
     <div class="stat">
       <div class="k">เฉลี่ย CAGR (กลยุทธ์)</div>
@@ -352,7 +374,7 @@ $("#signal-grid").addEventListener("click", (e) => {
     const sym = favBtn.dataset.fav;
     state.fav.has(sym) ? state.fav.delete(sym) : state.fav.add(sym);
     saveSets();
-    renderCards({ coins: state.coins }); // re-sort (โปรดขึ้นบน)
+    renderCards(); // re-sort (โปรดขึ้นบน)
   } else if (watchBtn) {
     const sym = watchBtn.dataset.watch;
     state.watch.has(sym) ? state.watch.delete(sym) : state.watch.add(sym);
@@ -368,12 +390,29 @@ document.querySelectorAll("#sort-seg button").forEach((b) =>
     b.classList.add("active");
     state.sortBy = b.dataset.sort;
     localStorage.setItem("sig_sort", state.sortBy);
-    if (state.coins.length) renderCards({ coins: state.coins });
+    if (state.coins.length) renderCards();
   })
 );
 // ตั้งปุ่ม active ให้ตรงกับค่าที่บันทึกไว้
 document.querySelectorAll("#sort-seg button").forEach((b) =>
   b.classList.toggle("active", b.dataset.sort === state.sortBy)
+);
+
+// ปุ่มสลับตัวกรอง ผ่านเกณฑ์ / ทั้งหมด
+document.querySelectorAll("#filter-seg button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#filter-seg button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    state.filterMode = b.dataset.f;
+    localStorage.setItem("sig_filter", state.filterMode);
+    if (state.coins.length) {
+      renderOrder();
+      renderCards();
+    }
+  })
+);
+document.querySelectorAll("#filter-seg button").forEach((b) =>
+  b.classList.toggle("active", b.dataset.f === state.filterMode)
 );
 
 load();

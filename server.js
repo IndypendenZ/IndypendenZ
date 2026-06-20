@@ -25,6 +25,10 @@ const STABLE = new Set([
   "USTC", "EUR", "EURI", "AEUR", "XUSD", "USD1",
 ]);
 
+// เกณฑ์คัดเหรียญ "ผ่านเกณฑ์" (แบบ cointh): ประวัติยาวพอ + ผลตอบแทนดี
+const PASS_MIN_YEARS = 3; // มีประวัติอย่างน้อย 3 ปี (ตัดเหรียญใหม่/ปั่น)
+const PASS_MIN_CAGR = 0.4; // ซื้อถือยาว CAGR > 40% ตลอดประวัติ
+
 // สร้าง client เฉพาะเมื่อมี ANTHROPIC_API_KEY (อ่านจาก env อัตโนมัติ)
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
@@ -581,9 +585,11 @@ app.get("/api/signal", async (_req, res) => {
     const coins = [];
     for (const { sym: base, vol } of symbols) {
       try {
-        const closes = await binanceCloses(base + "USDT", 2); // ~2000 แท่ง (≈5.5 ปี)
+        const closes = await binanceCloses(base + "USDT", 3); // ~3000 แท่ง (≈8 ปี)
         if (closes.length < 60) continue;
-        coins.push({ ...computeCoin(base, closes), vol });
+        const coin = { ...computeCoin(base, closes), vol };
+        coin.pass = coin.years >= PASS_MIN_YEARS && coin.cagrBH >= PASS_MIN_CAGR;
+        coins.push(coin);
       } catch {
         /* ข้ามเหรียญที่ดึงไม่ได้ */
       }
@@ -591,9 +597,13 @@ app.get("/api/signal", async (_req, res) => {
     }
     if (!coins.length) throw new Error("ดึงข้อมูลจาก Binance ไม่ได้");
 
-    // เปรียบเทียบผลรวมของแต่ละกลยุทธ์ (สมมติ $10k/เหรียญ)
+    // ใช้เฉพาะเหรียญที่ผ่านเกณฑ์เป็นฐานคำนวณสถิติ (ถ้าไม่มีผ่านเลย ใช้ทั้งหมด)
+    const passing = coins.filter((c) => c.pass);
+    const base = passing.length ? passing : coins;
+
+    // เปรียบเทียบผลรวมของแต่ละกลยุทธ์ (สมมติ $10k/เหรียญ — เฉพาะที่ผ่านเกณฑ์)
     const strategies = STRAT_DEFS.map(([key, label]) => {
-      const arr = coins.map((c) => c.strat[key]);
+      const arr = base.map((c) => c.strat[key]);
       return {
         key,
         label,
@@ -609,15 +619,23 @@ app.get("/api/signal", async (_req, res) => {
     const data = {
       coins: cleanCoins,
       strategies,
+      meta: {
+        nAll: coins.length,
+        nPass: passing.length,
+        minYears: PASS_MIN_YEARS,
+        minCagr: PASS_MIN_CAGR,
+        trackYears: Math.max(...base.map((c) => c.years)),
+        invested: base.length * 10000,
+      },
       portfolio: {
-        n: coins.length,
-        totalRSI: coins.reduce((a, b) => a + b.finalRSI * 10000, 0),
-        totalBH: coins.reduce((a, b) => a + b.finalBH * 10000, 0),
-        invested: coins.length * 10000,
-        avgCagr: coins.reduce((a, b) => a + b.cagr, 0) / coins.length,
-        avgSharpe: coins.reduce((a, b) => a + b.sharpe, 0) / coins.length,
-        worstMdd: Math.min(...coins.map((c) => c.mdd)),
-        years: Math.max(...coins.map((c) => c.years)),
+        n: base.length,
+        totalRSI: base.reduce((a, b) => a + b.finalRSI * 10000, 0),
+        totalBH: base.reduce((a, b) => a + b.finalBH * 10000, 0),
+        invested: base.length * 10000,
+        avgCagr: base.reduce((a, b) => a + b.cagr, 0) / base.length,
+        avgSharpe: base.reduce((a, b) => a + b.sharpe, 0) / base.length,
+        worstMdd: Math.min(...base.map((c) => c.mdd)),
+        years: Math.max(...base.map((c) => c.years)),
       },
       updatedAt: Date.now(),
     };

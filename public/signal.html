@@ -42,6 +42,11 @@
       </section>
 
       <div class="grid-controls">
+        <span class="gc-lab">แสดง</span>
+        <div class="sort-seg" id="filter-seg">
+          <button data-f="pass" class="active">ผ่านเกณฑ์</button>
+          <button data-f="all">ทั้งหมด</button>
+        </div>
         <span class="gc-lab">เรียงตาม</span>
         <div class="sort-seg" id="sort-seg">
           <button data-sort="signal" class="active">สัญญาณ (เข้าเกณฑ์มากสุด)</button>
@@ -61,10 +66,11 @@
       </p>
 
       <div class="warn-box">
-        ⚠️ <b>รายชื่อ = Top ~50 เหรียญตามสภาพคล่อง (volume) บน Binance</b> —
-        เลือกแบบ<em>เป็นกลาง</em> ไม่ได้คัดจากผลกำไรในอดีต จึงน่าเชื่อถือกว่าการเชอร์รี่พิก
-        · แต่ยังเหลือ survivorship bias เล็กน้อย เพราะเหรียญที่ถูก delist ไปแล้วจะไม่อยู่ในลิสต์
-        · ช่วงเวลาที่วัด (~5.5 ปี) ขึ้นกับประวัติที่ Binance มีของแต่ละเหรียญ · อ่านเป็นข้อมูลศึกษา
+        ⚠️ <b>โหมด "ผ่านเกณฑ์" = กรองจาก Top ~50 (volume) เหลือเฉพาะเหรียญที่มีประวัติ ≥ 3 ปี
+        และซื้อถือยาว CAGR &gt; 40%</b> — ช่วยตัดเหรียญใหม่/ผันผวนแบบมีคนปั่นออก
+        ทำให้สัญญาณนิ่งขึ้น · <b>แต่</b> การกรองด้วยผลกำไรในอดีต = performance filter
+        จึงมี <em>survivorship/selection bias</em> (มองโลกในแง่ดีกว่าความจริง) · อ่านเป็นข้อมูลศึกษา
+        ไม่ใช่คำแนะนำการลงทุน
       </div>
 
       <div id="stat-cards" class="stat-cards"></div>
