@@ -134,6 +134,89 @@ app.get("/api/status", (_req, res) => {
   res.json({ aiEnabled: Boolean(anthropic) });
 });
 
+// ---- คำนวณ RSI(14) แบบ Wilder ----
+function computeRSI(closes, period = 14) {
+  if (!closes || closes.length < period + 1) return null;
+  let gain = 0;
+  let loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) gain += d;
+    else loss -= d;
+  }
+  let avgGain = gain / period;
+  let avgLoss = loss / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    const g = d > 0 ? d : 0;
+    const l = d < 0 ? -d : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
+
+// ช่วงเวลา → จำนวนวันที่ดึงจาก CoinGecko (granularity ปรับอัตโนมัติ)
+const RSI_TF = {
+  "5m": 1, // days=1 → ข้อมูล 5 นาที
+  "1h": 14, // days=2-90 → ข้อมูลรายชั่วโมง
+  "1d": 200, // days>90 → ข้อมูลรายวัน
+};
+
+// ---- สแกน RSI ของเหรียญ Top 25 ----
+app.get("/api/rsi", async (req, res) => {
+  const vs = (req.query.vs || "usd").toLowerCase();
+  const tf = RSI_TF[req.query.tf] ? req.query.tf : "1d";
+  const key = `rsi:${vs}:${tf}`;
+  const cached = getCached(key, 300_000); // แคช 5 นาที
+  if (cached) return res.json(cached);
+
+  try {
+    let markets = getCached(`markets:${vs}`, 60_000);
+    if (!markets) {
+      markets = await cgFetch(
+        `${COINGECKO}/coins/markets?vs_currency=${vs}&order=market_cap_desc&per_page=30&page=1&sparkline=false`
+      );
+    }
+    const top = markets.slice(0, 25);
+    const days = RSI_TF[tf];
+    const out = [];
+    for (const c of top) {
+      try {
+        const chart = await cgFetch(
+          `${COINGECKO}/coins/${c.id}/market_chart?vs_currency=${vs}&days=${days}`
+        );
+        const closes = (chart.prices || []).map((p) => p[1]);
+        out.push({
+          id: c.id,
+          name: c.name,
+          symbol: c.symbol,
+          image: c.image,
+          price: c.current_price,
+          rsi: computeRSI(closes, 14),
+        });
+      } catch {
+        out.push({
+          id: c.id,
+          name: c.name,
+          symbol: c.symbol,
+          image: c.image,
+          price: c.current_price,
+          rsi: null,
+        });
+      }
+      // หน่วงเล็กน้อยกัน rate limit ของ CoinGecko ฟรี
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    setCached(key, out);
+    res.json(out);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // helper: สตรีมคำตอบจาก Claude ออกทาง response
 async function streamClaude(res, { system, messages, maxTokens = 1200, effort = "low" }) {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");

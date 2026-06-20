@@ -8,6 +8,7 @@
 - 🔍 **ค้นหา + จัดอันดับ** — ขึ้น/ลงมากสุดใน 24ชม
 - 💱 **สลับสกุลเงิน** — USD / THB
 - 🌍 **ภาพรวมตลาด** — มูลค่าตลาดรวม, BTC Dominance, ดัชนี Fear & Greed, เหรียญมาแรง (Trending)
+- 📐 **RSI Scanner** — คำนวณ RSI(14) ของเหรียญ Top 25 เลือกช่วงเวลา 5นาที/1ชม/1วัน + กรอง Oversold/Overbought
 - 🤖 **วิเคราะห์ด้วย AI (Claude)** — สรุปข้อมูลรายเหรียญ + วิเคราะห์ภาพรวมตลาดทั้งหมด
 - 💬 **แชท AI** — ถาม-ตอบเรื่องคริปโตได้ทุกอย่าง (อ้างอิงราคาปัจจุบันได้)
 
@@ -85,6 +86,7 @@ node --env-file=.env server.js
 | `GET /api/coin/:id/chart?vs=usd&days=7` | ข้อมูลกราฟราคา |
 | `GET /api/global?vs=usd` | ภาพรวมตลาดรวม + Fear & Greed |
 | `GET /api/trending` | เหรียญมาแรง |
+| `GET /api/rsi?vs=usd&tf=1d` | สแกน RSI(14) เหรียญ Top 25 (tf: 5m/1h/1d) |
 | `GET /api/status` | เช็คว่าเปิดใช้ AI ได้ไหม |
 | `POST /api/analyze` | Claude วิเคราะห์รายเหรียญ (สตรีม) |
 | `POST /api/market-analysis` | Claude วิเคราะห์ภาพรวมตลาด (สตรีม) |

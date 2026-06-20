@@ -40,6 +40,7 @@
       <button data-tab="watch">⭐ รายการที่ติดตาม</button>
       <button data-tab="gainers">📈 ขึ้นมากสุด (24ชม)</button>
       <button data-tab="losers">📉 ลงมากสุด (24ชม)</button>
+      <button data-tab="rsi">📐 RSI</button>
     </nav>
 
     <main>
@@ -57,7 +58,7 @@
         <div id="trending" class="trending"></div>
       </div>
 
-      <div class="table-wrap">
+      <div class="table-wrap" id="market-wrap">
         <table id="market-table">
           <thead>
             <tr>
@@ -80,6 +81,43 @@
           </tbody>
         </table>
       </div>
+      <!-- หน้าสแกน RSI -->
+      <section id="rsi-view" class="rsi-view hidden">
+        <div class="rsi-controls">
+          <div class="seg" id="rsi-tf">
+            <button data-tf="5m">5 นาที</button>
+            <button data-tf="1h">1 ชม.</button>
+            <button data-tf="1d" class="active">1 วัน</button>
+          </div>
+          <div class="seg" id="rsi-filter">
+            <button data-f="all" class="active">ทั้งหมด</button>
+            <button data-f="oversold">Oversold &lt;30</button>
+            <button data-f="overbought">Overbought &gt;70</button>
+          </div>
+        </div>
+        <p class="rsi-hint">
+          RSI (14): ต่ำกว่า <b class="pos">30</b> = แรงขายมาก (oversold) ·
+          สูงกว่า <b class="neg">70</b> = แรงซื้อมาก (overbought) ·
+          เป็นข้อมูลเชิงการศึกษา ไม่ใช่คำแนะนำการลงทุน
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="rank-col">#</th>
+                <th>เหรียญ</th>
+                <th class="num">ราคา</th>
+                <th class="num">RSI (14)</th>
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody id="rsi-body">
+              <tr><td colspan="5" class="loading">กำลังโหลด…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <p class="footnote">
         ข้อมูลราคาจาก CoinGecko · เว็บนี้ใช้ส่วนตัว ไม่มีระบบเทรด ·
         การวิเคราะห์ด้วย AI เป็นข้อมูลเชิงการศึกษา ไม่ใช่คำแนะนำการลงทุน

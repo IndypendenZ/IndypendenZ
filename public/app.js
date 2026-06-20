@@ -10,6 +10,9 @@ const state = {
   chart: null,
   global: null, // ข้อมูลภาพรวมตลาด
   chatHistory: [], // ประวัติแชท AI
+  rsiTf: "1d", // ช่วงเวลา RSI
+  rsiFilter: "all", // กรอง RSI
+  rsiData: [], // ผล RSI
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -522,6 +525,7 @@ function reloadAll() {
   loadMarkets();
   loadGlobal();
   loadTrending();
+  if (state.tab === "rsi") loadRSI();
 }
 $("#refresh").addEventListener("click", reloadAll);
 document.querySelectorAll("#currency button").forEach((b) =>
@@ -532,12 +536,105 @@ document.querySelectorAll("#currency button").forEach((b) =>
     reloadAll();
   })
 );
+// ===== RSI scanner =====
+function setRsiView(on) {
+  $("#rsi-view").classList.toggle("hidden", !on);
+  $("#market-wrap").classList.toggle("hidden", on);
+  $("#overview").classList.toggle("hidden", on);
+  $("#market-ai").classList.add("hidden");
+  const hasTrend = $("#trending").children.length > 0;
+  $("#trending-wrap").classList.toggle("hidden", on || !hasTrend);
+}
+
+function rsiStatus(v) {
+  if (v == null) return { label: "—", cls: "muted" };
+  if (v < 30) return { label: "Oversold · แรงขาย", cls: "pos" };
+  if (v > 70) return { label: "Overbought · แรงซื้อ", cls: "neg" };
+  return { label: "ปกติ", cls: "muted" };
+}
+
+function renderRSI() {
+  let list = [...state.rsiData];
+  if (state.rsiFilter === "oversold")
+    list = list.filter((c) => c.rsi != null && c.rsi < 30);
+  if (state.rsiFilter === "overbought")
+    list = list.filter((c) => c.rsi != null && c.rsi > 70);
+  list.sort((a, b) => (a.rsi ?? 999) - (b.rsi ?? 999));
+  const tbody = $("#rsi-body");
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="loading">ไม่มีเหรียญในเงื่อนไขนี้</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list
+    .map((c, i) => {
+      const s = rsiStatus(c.rsi);
+      return `<tr data-id="${c.id}">
+        <td class="rank-col muted">${i + 1}</td>
+        <td>
+          <div class="coin-cell">
+            <img src="${c.image}" alt="" loading="lazy"/>
+            <div>
+              <div class="coin-name">${c.name}</div>
+              <div class="coin-symbol">${c.symbol}</div>
+            </div>
+          </div>
+        </td>
+        <td class="num">${fmtPrice(c.price)}</td>
+        <td class="num"><b class="${s.cls}">${c.rsi == null ? "—" : c.rsi.toFixed(1)}</b></td>
+        <td class="${s.cls}">${s.label}</td>
+      </tr>`;
+    })
+    .join("");
+}
+
+async function loadRSI() {
+  const tbody = $("#rsi-body");
+  tbody.innerHTML = `<tr><td colspan="5" class="loading">กำลังคำนวณ RSI… (อาจใช้เวลาสักครู่ในครั้งแรก)</td></tr>`;
+  try {
+    const r = await fetch(`/api/rsi?vs=${state.vs}&tf=${state.rsiTf}`);
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    state.rsiData = await r.json();
+    renderRSI();
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="loading">โหลดไม่สำเร็จ: ${e.message}</td></tr>`;
+  }
+}
+
+$("#rsi-body").addEventListener("click", (e) => {
+  const row = e.target.closest("tr[data-id]");
+  if (row && state.coins.find((c) => c.id === row.dataset.id))
+    openModal(row.dataset.id);
+});
+
+document.querySelectorAll("#rsi-tf button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#rsi-tf button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    state.rsiTf = b.dataset.tf;
+    loadRSI();
+  })
+);
+document.querySelectorAll("#rsi-filter button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#rsi-filter button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    state.rsiFilter = b.dataset.f;
+    renderRSI();
+  })
+);
+
 document.querySelectorAll(".tabs button").forEach((b) =>
   b.addEventListener("click", () => {
     document.querySelectorAll(".tabs button").forEach((x) => x.classList.remove("active"));
     b.classList.add("active");
     state.tab = b.dataset.tab;
-    render();
+    if (state.tab === "rsi") {
+      setRsiView(true);
+      if (!state.rsiData.length) loadRSI();
+    } else {
+      setRsiView(false);
+      render();
+    }
   })
 );
 document.addEventListener("keydown", (e) => {
