@@ -1,0 +1,255 @@
+const state = { coins: [], bySym: {}, ws: null };
+
+const $ = (s, r = document) => r.querySelector(s);
+
+// ---- format ----
+const fmtUSD = (v) => {
+  if (v == null) return "—";
+  const d = v >= 1000 ? 0 : v >= 1 ? 2 : v >= 0.01 ? 4 : 6;
+  return "$" + Number(v).toLocaleString("en-US", { maximumFractionDigits: d });
+};
+const fmtBig = (v) => {
+  const a = Math.abs(v);
+  if (a >= 1e9) return "$" + (v / 1e9).toFixed(2) + "B";
+  if (a >= 1e6) return "$" + (v / 1e6).toFixed(2) + "M";
+  if (a >= 1e3) return "$" + (v / 1e3).toFixed(0) + "K";
+  return "$" + Math.round(v).toLocaleString("en-US");
+};
+const pctTxt = (v) => (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+
+function rsiClass(v) {
+  if (v == null) return "rsi-neu";
+  if (v > 55) return "rsi-pos";
+  if (v < 45) return "rsi-neg";
+  return "rsi-neu";
+}
+
+// in-progress RSI หนึ่งสเต็ปจากแท่งปิดล่าสุด
+function liveRSI(s, price) {
+  const d = price - s.lastClose;
+  const g = d > 0 ? d : 0;
+  const l = d < 0 ? -d : 0;
+  const ag = (s.avgGain * 13 + g) / 14;
+  const al = (s.avgLoss * 13 + l) / 14;
+  if (al === 0) return 100;
+  return 100 - 100 / (1 + ag / al);
+}
+
+// ---- โหลดข้อมูล ----
+async function load() {
+  try {
+    const r = await fetch("/api/signal");
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    const data = await r.json();
+    state.coins = data.coins;
+    data.coins.forEach((c) => (state.bySym[c.sym] = { ...c, live: c.lastClose, chg: null }));
+    renderStatus(data);
+    renderOrder(data);
+    renderCards(data);
+    renderStats(data);
+    renderTable(data);
+    connectWS();
+  } catch (e) {
+    $("#statusbar").innerHTML = `<span class="r">โหลดไม่สำเร็จ: ${e.message}</span> — หน้านี้ต้องเข้าถึง api.binance.com (ปกติบนเครื่องตัวเองได้)`;
+  }
+}
+
+function renderStatus(d) {
+  const dt = new Date(d.updatedAt);
+  $("#clock").textContent = dt.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) + " น.";
+  $("#statusbar").innerHTML =
+    `<span class="dot">●</span> อัปเดตแล้ว` +
+    `<span class="sep">|</span> <span class="v">${d.coins.length}</span> เหรียญ` +
+    `<span class="sep">|</span> <span id="ws-state">กำลังเชื่อมต่อสด…</span>` +
+    `<span class="sep">|</span> BTC <span class="v" id="btc-px">—</span>` +
+    `<span class="sep">|</span> กลยุทธ์ <span class="v">RSI 55/45 · long-only</span>`;
+}
+
+function renderOrder(d) {
+  const longs = d.coins.filter((c) => c.state === "LONG").map((c) => c.sym);
+  if (longs.length) {
+    $("#order-title").innerHTML = `เข้าเกณฑ์ถือ: <span class="syms">${longs.join(", ")}</span>`;
+    $("#order-sub").textContent = `${longs.length} จาก ${d.coins.length} เหรียญ RSI > 55 · ที่เหลือถือเงินสด (RSI ยังไม่ผ่านเกณฑ์)`;
+  } else {
+    $("#order-title").innerHTML = `ทั้งหมดถือเงินสด <span class="syms">(CASH)</span>`;
+    $("#order-sub").textContent = `0 จาก ${d.coins.length} เหรียญที่ RSI > 55 — กลยุทธ์แนะให้ถือเงินสดทั้งหมดตอนนี้`;
+  }
+}
+
+function renderCards(d) {
+  $("#signal-grid").innerHTML = d.coins
+    .map((c) => {
+      const isLong = c.state === "LONG";
+      return `<div class="card ${isLong ? "is-long" : ""}" id="c-${c.sym}">
+        <div class="card-top">
+          <span class="sym">${c.sym}</span>
+          <span class="live">LIVE</span>
+          <span class="badge ${isLong ? "long" : ""}">${c.state}</span>
+        </div>
+        <div class="price-row">
+          <span class="price">${fmtUSD(c.lastClose)}</span>
+          <span class="chg" data-chg>—</span>
+        </div>
+        <div class="rsi-big ${rsiClass(c.rsiLast)}" data-rsi>${c.rsiLast == null ? "—" : c.rsiLast.toFixed(1)}
+          <small>RSI 14 · สด</small>
+        </div>
+        <div class="gauge">
+          <span class="mark closed" style="left:${c.rsiLast ?? 50}%"></span>
+          <span class="mark live" data-mark style="left:${c.rsiLast ?? 50}%"></span>
+        </div>
+        <div class="gauge-scale"><span>0</span><span>45</span><span>55</span><span>100</span></div>
+        <div class="card-foot">
+          <div data-foot></div>
+          <div class="flip" data-flip></div>
+        </div>
+      </div>`;
+    })
+    .join("");
+  // เติมข้อความ flip เริ่มต้นจากค่าแท่งปิด
+  d.coins.forEach((c) => updateCard(c.sym, c.lastClose, null));
+}
+
+function updateCard(sym, price, chg) {
+  const s = state.bySym[sym];
+  if (!s) return;
+  const card = $("#c-" + sym);
+  if (!card) return;
+  const rsi = liveRSI(s, price);
+
+  $("[data-rsi]", card).firstChild.nodeValue = rsi.toFixed(1);
+  $("[data-rsi]", card).className = "rsi-big " + rsiClass(rsi);
+  $("[data-mark]", card).style.left = Math.max(0, Math.min(100, rsi)) + "%";
+  $(".price", card).textContent = fmtUSD(price);
+  if (chg != null) {
+    const el = $("[data-chg]", card);
+    el.textContent = pctTxt(chg);
+    el.className = "chg " + (chg >= 0 ? "up" : "down");
+  }
+
+  const foot = $("[data-foot]", card);
+  const flip = $("[data-flip]", card);
+  if (s.state === "CASH") {
+    const dist = 55 - rsi;
+    foot.innerHTML = `คงสถานะ (แท่งปิด) — เข้า (→LONG) เมื่อ RSI > 55 <b>(ห่างอีก ${Math.abs(dist).toFixed(1)} จุด)</b>`;
+    if (rsi > 55) {
+      flip.className = "flip go";
+      flip.textContent = `ถ้าปิดวันนี้ที่ราคานี้ → RSI ${rsi.toFixed(0)} · จะเข้า LONG 🟢`;
+    } else {
+      flip.className = "flip";
+      flip.textContent = `ถ้าปิดวันนี้ที่ราคานี้ → RSI ${rsi.toFixed(0)} (ยังไม่พลิก)`;
+    }
+  } else {
+    const dist = rsi - 45;
+    const near = dist <= 4 ? " ⚠️ ใกล้พลิก!" : "";
+    foot.innerHTML = `คงสถานะ (แท่งปิด) — ออก (→CASH) เมื่อ RSI < 45 <b>(ห่างอีก ${Math.abs(dist).toFixed(1)} จุด)${near}</b>`;
+    if (rsi < 45) {
+      flip.className = "flip exit";
+      flip.textContent = `ถ้าปิดวันนี้ที่ราคานี้ → RSI ${rsi.toFixed(0)} · จะออก CASH`;
+    } else {
+      flip.className = "flip";
+      flip.textContent = `ถ้าปิดวันนี้ที่ราคานี้ → RSI ${rsi.toFixed(0)} (ยังไม่พลิก)`;
+    }
+  }
+}
+
+function renderStats(d) {
+  const p = d.portfolio;
+  const mult = p.totalRSI / p.invested;
+  $("#stat-cards").innerHTML = `
+    <div class="stat">
+      <div class="k">เติม $10K/เหรียญ (รวม ${fmtBig(p.invested)}) → เป็น</div>
+      <div class="v green">${fmtBig(p.totalRSI)}</div>
+      <div class="s">${mult.toFixed(1)}x ของเงินที่ลงทั้งหมด · กลยุทธ์ RSI</div>
+    </div>
+    <div class="stat">
+      <div class="k">เฉลี่ย CAGR (กลยุทธ์)</div>
+      <div class="v ${p.avgCagr >= 0 ? "green" : "red"}">${(p.avgCagr * 100).toFixed(0)}%</div>
+      <div class="s">ต่อปี · เฉลี่ยข้ามเหรียญ</div>
+    </div>
+    <div class="stat">
+      <div class="k">เฉลี่ย Sharpe</div>
+      <div class="v">${p.avgSharpe.toFixed(2)}</div>
+      <div class="s">ผลตอบแทนต่อความเสี่ยง</div>
+    </div>
+    <div class="stat">
+      <div class="k">ขาดทุนสูงสุด (MDD)</div>
+      <div class="v red">${(p.worstMdd * 100).toFixed(0)}%</div>
+      <div class="s">ช่วงดิ่งหนักสุด (เหรียญแย่สุด)</div>
+    </div>`;
+}
+
+function renderTable(d) {
+  const rows = [...d.coins].sort((a, b) => b.finalRSI - a.finalRSI);
+  const p = d.portfolio;
+  const totalRow = `<tr class="total">
+    <td class="csym">รวม ${p.n} เหรียญ</td>
+    <td class="num g">${fmtBig(p.totalRSI)}</td>
+    <td class="num">${fmtBig(p.totalBH)}</td>
+    <td class="num g">${(p.avgCagr * 100).toFixed(0)}%</td>
+    <td class="num">${p.avgSharpe.toFixed(2)}</td>
+    <td class="num r">${(p.worstMdd * 100).toFixed(0)}%</td>
+    <td class="num">—</td>
+  </tr>`;
+  $("#bt-body").innerHTML =
+    totalRow +
+    rows
+      .map((c) => {
+        const rsiVal = c.finalRSI * 10000;
+        const bhVal = c.finalBH * 10000;
+        return `<tr>
+        <td class="csym">${c.sym}</td>
+        <td class="num g">${fmtBig(rsiVal)}</td>
+        <td class="num ${bhVal >= 10000 ? "g" : "r"}">${fmtBig(bhVal)}</td>
+        <td class="num ${c.cagr >= 0 ? "g" : "r"}">${(c.cagr * 100).toFixed(0)}%</td>
+        <td class="num">${c.sharpe.toFixed(2)}</td>
+        <td class="num r">${(c.mdd * 100).toFixed(0)}%</td>
+        <td class="num">${c.trades}</td>
+      </tr>`;
+      })
+      .join("");
+}
+
+// ---- Binance WebSocket (ราคาสด + in-progress RSI) ----
+function connectWS() {
+  const syms = state.coins.map((c) => c.sym.toLowerCase() + "usdt@miniTicker");
+  const url = "wss://stream.binance.com:9443/stream?streams=" + syms.join("/");
+  let ws;
+  try {
+    ws = new WebSocket(url);
+  } catch {
+    return;
+  }
+  state.ws = ws;
+  ws.onopen = () => {
+    const el = $("#ws-state");
+    if (el) el.innerHTML = '<span class="dot">●</span> เชื่อมต่อสดแล้ว';
+  };
+  ws.onmessage = (ev) => {
+    let msg;
+    try {
+      msg = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    const t = msg.data;
+    if (!t || !t.s) return;
+    const sym = t.s.replace("USDT", "");
+    if (!state.bySym[sym]) return;
+    const price = parseFloat(t.c);
+    const open = parseFloat(t.o);
+    const chg = open ? ((price - open) / open) * 100 : null;
+    updateCard(sym, price, chg);
+    if (sym === "BTC") {
+      const b = $("#btc-px");
+      if (b) b.textContent = fmtUSD(price);
+    }
+  };
+  ws.onclose = () => {
+    const el = $("#ws-state");
+    if (el) el.textContent = "หลุดการเชื่อมต่อ — กำลังต่อใหม่…";
+    setTimeout(connectWS, 4000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+load();

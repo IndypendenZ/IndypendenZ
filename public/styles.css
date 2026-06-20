@@ -139,6 +139,21 @@ body {
 .ghost:hover {
   border-color: var(--accent-2);
 }
+.navlink {
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent);
+  color: #1a1300;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.navlink:hover {
+  filter: brightness(1.05);
+}
 
 /* ---- Tabs ---- */
 .tabs {

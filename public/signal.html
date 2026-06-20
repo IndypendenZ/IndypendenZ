@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RSI Signal · กลยุทธ์ RSI 55/45 + Backtest</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;0,800;1,500&family=Noto+Serif+Thai:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/signal.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="back" href="/">← กลับแดชบอร์ด</a>
+
+      <header class="hero">
+        <div class="hero-main">
+          <div class="eyebrow">REALTIME RSI SIGNAL + BACKTEST</div>
+          <h1><span class="btc">₿</span> RSI Signal</h1>
+          <p class="lead">
+            ตอนนี้เหรียญที่ติดตามควรถือสถานะไหน — ตามกฎ
+            <em class="hl">RSI 55/45 long-only</em> ราคา + in-progress RSI
+            อัปเดตสด (WebSocket จาก Binance) ส่วนสถานะ LONG/CASH
+            ยึด<em>แท่งปิด</em>เหมือนเดิมเพื่อกัน look-ahead
+          </p>
+        </div>
+        <div class="hero-meta">
+          <div id="clock" class="clock">—</div>
+          <div class="src">data · Binance spot · daily close</div>
+        </div>
+      </header>
+
+      <div id="statusbar" class="statusbar">กำลังโหลดข้อมูล…</div>
+
+      <section class="order-box">
+        <div class="order-label">คำสั่ง ณ ตอนนี้</div>
+        <h2 id="order-title">—</h2>
+        <p id="order-sub" class="order-sub"></p>
+      </section>
+
+      <section id="signal-grid" class="signal-grid"></section>
+
+      <!-- Track record -->
+      <h2 class="section-h">ผลทดสอบย้อนหลัง · Track Record</h2>
+      <p class="bt-intro">
+        จำลองลงทุน <em class="hl">$10,000 ต่อเหรียญ</em> ในเหรียญที่ติดตาม
+        โดยใช้กฎ RSI 55/45 (เข้าเมื่อ RSI&gt;55 · ออกเป็นเงินสดเมื่อ RSI&lt;45)
+        คิดค่าธรรมเนียม taker 0.04%/ครั้ง เทียบกับการซื้อถือยาว (Buy &amp; Hold)
+        — <em>ทุกตัวเลขคำนวณสดในเบราว์เซอร์จากราคาจริง Binance ไม่ใช่ค่าที่บันทึกไว้</em>
+      </p>
+
+      <div class="warn-box">
+        ⚠️ <b>การคัดเหรียญนี้มี selection bias</b> — รายชื่อนี้เลือกจากเหรียญที่
+        <em>เคยทำผลงานดีในอดีต</em> ซึ่งไม่รับประกันว่าจะทำต่อในอนาคต
+        (survivorship bias) · ช่วงเวลาที่วัดขึ้นกับประวัติที่ Binance มีของแต่ละเหรียญ
+        · อ่านเป็นข้อมูลศึกษา ไม่ใช่สูตรลอย
+      </div>
+
+      <div id="stat-cards" class="stat-cards"></div>
+
+      <div class="table-wrap">
+        <table class="bt-table">
+          <thead>
+            <tr>
+              <th>เหรียญ</th>
+              <th class="num">RSI $10K →</th>
+              <th class="num">B&amp;H $10K →</th>
+              <th class="num">CAGR</th>
+              <th class="num">Sharpe</th>
+              <th class="num">MDD</th>
+              <th class="num">เทรด</th>
+            </tr>
+          </thead>
+          <tbody id="bt-body">
+            <tr><td colspan="7" class="loading">กำลังคำนวณ…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- กฎ + การคัดเลือก -->
+      <div class="two-col">
+        <div class="info-box">
+          <h3>กฎของกลยุทธ์</h3>
+          <p>เป็น state-machine ง่ายๆ ที่ดูค่า RSI ของ<b>แท่งวันที่ปิดแล้ว</b> (กัน look-ahead):</p>
+          <pre>RSI &gt; 55  →  เข้า LONG (ถือเหรียญ)
+RSI &lt; 45  →  ออก CASH (ถือเงินสด)
+45–55     →  คงสถานะเดิม</pre>
+          <ul>
+            <li>ช่วง <b>45–55</b> เป็น dead band กัน whipsaw — ไม่เด้งเข้าออกถี่</li>
+            <li>ทำกำไรช่วงขาขึ้น (เข้าเร็ว) และ <b>หนีตลาดหมี</b> (ออกเป็นเงินสดก่อนดิ่ง)</li>
+            <li>เป็น long-only — ไม่มี short, ไม่มี leverage</li>
+            <li>บนการ์ด: ตัวเลขใหญ่ = in-progress RSI (ถ้าปิดที่ราคาสด) · สถานะ LONG/CASH เปลี่ยนเฉพาะเมื่อแท่งวันปิดจริง</li>
+          </ul>
+        </div>
+        <div class="info-box">
+          <h3>RSI 14 คืออะไร</h3>
+          <p>
+            <em class="hl">RSI (Relative Strength Index)</em>
+            วัดแรงซื้อเทียบแรงขายในช่วง <b>14 วันล่าสุด</b> ออกมาเป็นเลข 0–100
+            ด้วยวิธี Wilder smoothing — ค่าสูงแปลว่าราคากำลังแข็งแรง (momentum ขาขึ้น)
+            ค่าต่ำแปลว่าอ่อนแรง
+          </p>
+          <p>
+            เกณฑ์ 55/45 จึงเป็นการบอกว่า "ถือเมื่อแข็งแรงพอ
+            และถอยเป็นเงินสดเมื่ออ่อนแรง" — ต่างจากเกณฑ์ 30/70 ทั่วไปตรงที่
+            55/45 ให้สัญญาณเร็วและสม่ำเสมอกว่าในการทดสอบข้ามหลายเหรียญ
+          </p>
+        </div>
+      </div>
+
+      <div class="disc-box">
+        <h3>⚠️ ข้อจำกัดความรับผิดชอบ / Disclaimer</h3>
+        <ul>
+          <li><b>เพื่อการศึกษาเท่านั้น</b> ไม่ใช่คำแนะนำการลงทุน การเงิน ภาษี หรือคำเสนอซื้อขายใดๆ</li>
+          <li>สัญญาณคำนวณจาก<b>แท่งปิดล่าสุดเท่านั้น</b> (daily close) แท่งวันปัจจุบันที่ยังไม่ปิดถูกตัดทิ้ง — สถานะอาจเปลี่ยนเมื่อแท่งวันนี้ปิดจริง</li>
+          <li><b>ผลทดสอบย้อนหลังไม่รับประกันผลในอนาคต</b> · คริปโตผันผวนสูง อาจสูญเสียเงินต้นทั้งจำนวน · regime เปลี่ยนได้</li>
+          <li>ผลลัพธ์ไม่รวม slippage, funding และภาษี — ผลตอบแทนจริงอาจต่ำกว่าที่แสดงมาก</li>
+          <li>การคัดเหรียญ = selection / survivorship bias — เลือกเฉพาะตัวที่เคยทำกำไรในอดีต</li>
+          <li>ผู้ลงทุนต้องประเมินความเสี่ยงเอง · ผู้จัดทำไม่รับผิดชอบความเสียหายใดๆ</li>
+        </ul>
+      </div>
+
+      <footer class="foot">CryptoDash · RSI Signal · ใช้ส่วนตัว · ข้อมูล Binance spot</footer>
+    </div>
+
+    <script src="/signal.js"></script>
+  </body>
+</html>

@@ -11,6 +11,13 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
 const COINGECKO = "https://api.coingecko.com/api/v3";
+const BINANCE = "https://api.binance.com";
+
+// เหรียญที่ติดตามในหน้า RSI Signal (เทียบกับเวอร์ชัน cointh)
+const SIGNAL_COINS = [
+  "BTC", "ETH", "BNB", "SOL", "ADA", "DOGE", "AVAX", "LINK",
+  "AXS", "SAND", "ZEC", "FET", "EGLD", "RUNE", "VET", "WLD", "ONE", "ENJ",
+];
 
 // สร้าง client เฉพาะเมื่อมี ANTHROPIC_API_KEY (อ่านจาก env อัตโนมัติ)
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
@@ -237,6 +244,152 @@ app.get("/api/rsi", async (req, res) => {
     res.json(out);
   } catch (e) {
     const stale = getStale(key);
+    if (stale) return res.json(stale);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ===== RSI Signal + Backtest (ใช้ราคาจาก Binance) =====
+
+// คำนวณซีรีส์ RSI(14) แบบ Wilder + คืนสถานะ smoothing ล่าสุด
+function rsiSeries(closes, period = 14) {
+  const rsi = new Array(closes.length).fill(null);
+  if (closes.length < period + 1) return { rsi, avgGain: 0, avgLoss: 0 };
+  let gain = 0;
+  let loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) gain += d;
+    else loss -= d;
+  }
+  let avgGain = gain / period;
+  let avgLoss = loss / period;
+  rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    const g = d > 0 ? d : 0;
+    const l = d < 0 ? -d : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+    rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return { rsi, avgGain, avgLoss };
+}
+
+// backtest กลยุทธ์ RSI 55/45 long-only เทียบกับ Buy & Hold
+function backtest(closes, fee = 0.0004) {
+  const { rsi, avgGain, avgLoss } = rsiSeries(closes, 14);
+  let state = "CASH";
+  let stratEq = 1;
+  let bhEq = 1;
+  let trades = 0;
+  let peak = 1;
+  let mdd = 0;
+  const rets = [];
+  for (let i = 0; i < closes.length - 1; i++) {
+    if (rsi[i] != null) {
+      if (rsi[i] > 55 && state !== "LONG") {
+        state = "LONG";
+        trades++;
+        stratEq *= 1 - fee;
+      } else if (rsi[i] < 45 && state !== "CASH") {
+        state = "CASH";
+        trades++;
+        stratEq *= 1 - fee;
+      }
+    }
+    const r = closes[i + 1] / closes[i] - 1;
+    bhEq *= 1 + r;
+    if (state === "LONG") {
+      stratEq *= 1 + r;
+      rets.push(r);
+    } else {
+      rets.push(0);
+    }
+    peak = Math.max(peak, stratEq);
+    mdd = Math.min(mdd, (stratEq - peak) / peak);
+  }
+  // สถานะปัจจุบัน = อิงแท่งปิดล่าสุด
+  const rsiLast = rsi[closes.length - 1];
+  if (rsiLast != null) {
+    if (rsiLast > 55) state = "LONG";
+    else if (rsiLast < 45) state = "CASH";
+  }
+  const years = (closes.length - 1) / 365.25;
+  const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
+  const sd = Math.sqrt(
+    rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length || 1)
+  );
+  return {
+    finalRSI: stratEq,
+    finalBH: bhEq,
+    cagr: Math.pow(stratEq, 1 / years) - 1,
+    cagrBH: Math.pow(bhEq, 1 / years) - 1,
+    sharpe: sd > 0 ? (mean / sd) * Math.sqrt(365) : 0,
+    mdd,
+    trades,
+    years,
+    state,
+    rsiLast,
+    avgGain,
+    avgLoss,
+    lastClose: closes[closes.length - 1],
+  };
+}
+
+// ดึงราคาปิดรายวันจาก Binance (แบ่งหน้าได้สูงสุด ~3000 แท่ง)
+async function binanceCloses(symbol, pages = 3) {
+  let endTime = Date.now();
+  const batches = [];
+  for (let i = 0; i < pages; i++) {
+    const url = `${BINANCE}/api/v3/klines?symbol=${symbol}&interval=1d&limit=1000&endTime=${endTime}`;
+    const r = await fetch(url, { headers: { accept: "application/json" } });
+    if (!r.ok) break;
+    const k = await r.json();
+    if (!Array.isArray(k) || !k.length) break;
+    batches.unshift(k);
+    endTime = k[0][0] - 1;
+    if (k.length < 1000) break;
+  }
+  return batches.flat().map((x) => parseFloat(x[4]));
+}
+
+app.get("/api/signal", async (_req, res) => {
+  const cached = getCached("signal", 600_000); // แคช 10 นาที
+  if (cached) return res.json(cached);
+  try {
+    const coins = [];
+    for (const c of SIGNAL_COINS) {
+      try {
+        const closes = await binanceCloses(c + "USDT");
+        if (closes.length < 60) continue;
+        coins.push({ sym: c, ...backtest(closes) });
+      } catch {
+        /* ข้ามเหรียญที่ดึงไม่ได้ */
+      }
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    if (!coins.length) throw new Error("ดึงข้อมูลจาก Binance ไม่ได้");
+    const totalRSI = coins.reduce((a, b) => a + b.finalRSI * 10000, 0);
+    const totalBH = coins.reduce((a, b) => a + b.finalBH * 10000, 0);
+    const data = {
+      coins,
+      portfolio: {
+        n: coins.length,
+        totalRSI,
+        totalBH,
+        invested: coins.length * 10000,
+        avgCagr: coins.reduce((a, b) => a + b.cagr, 0) / coins.length,
+        avgSharpe: coins.reduce((a, b) => a + b.sharpe, 0) / coins.length,
+        worstMdd: Math.min(...coins.map((c) => c.mdd)),
+        years: Math.max(...coins.map((c) => c.years)),
+      },
+      updatedAt: Date.now(),
+    };
+    setCached("signal", data);
+    res.json(data);
+  } catch (e) {
+    const stale = getStale("signal");
     if (stale) return res.json(stale);
     res.status(502).json({ error: e.message });
   }
