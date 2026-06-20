@@ -1,18 +1,18 @@
-const state = { metric: "z", data: null, chart: null };
+const state = { tf: 0, gran: "month", data: null, chart: null };
 const $ = (s) => document.querySelector(s);
 
 const AMBER = "#e0a93c";
-function mvrvZone(v) {
-  if (v < 1) return { label: "ต่ำกว่ามูลค่าจริง · โซนสะสม (จุดต่ำสุดของรอบ)", color: "var(--green)" };
-  if (v < 2.4) return { label: "ปกติ", color: "var(--ink)" };
-  if (v < 3.7) return { label: "เริ่มแพง · ตลาดร้อนขึ้น", color: AMBER };
-  return { label: "แพงมาก · ระวังจุดสูงสุด", color: "var(--red)" };
-}
 function zZone(v) {
   if (v < 0.1) return { label: "โซนจุดต่ำสุด · โอกาสสะสมในอดีต", color: "var(--green)" };
   if (v < 2) return { label: "ปกติ–ถูก", color: "var(--ink)" };
   if (v < 7) return { label: "แพงขึ้น", color: AMBER };
   return { label: "โซนฟอง · ใกล้จุดสูงสุดในอดีต", color: "var(--red)" };
+}
+function mvrvZone(v) {
+  if (v < 1) return { label: "ต่ำกว่ามูลค่าจริง · โซนสะสม", color: "var(--green)" };
+  if (v < 2.4) return { label: "ปกติ", color: "var(--ink)" };
+  if (v < 3.7) return { label: "เริ่มแพง", color: AMBER };
+  return { label: "แพงมาก · ระวังจุดสูงสุด", color: "var(--red)" };
 }
 
 async function load() {
@@ -21,23 +21,21 @@ async function load() {
     const r = await fetch("/api/mvrv");
     if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     state.data = await r.json();
-    render();
+    renderStats();
+    renderChart();
   } catch (e) {
-    $("#statusbar").innerHTML = `<span style="color:var(--red)">โหลดไม่สำเร็จ: ${e.message}</span> — ต้องเข้าถึง bitcoin-data.com (ปกติบนเครื่องตัวเองได้)`;
+    $("#statusbar").innerHTML = `<span style="color:var(--red)">โหลดไม่สำเร็จ: ${e.message}</span> — ต้องเข้าถึง bitcoin-data.com / coingecko (ปกติบนเครื่องตัวเองได้)`;
   }
 }
 
-function render() {
+function renderStats() {
   const d = state.data;
   const c = d.current;
-
-  // Z-Score (มีเสมอ)
   const zz = zZone(c.z);
   $("#z-val").textContent = c.z.toFixed(2);
   $("#z-val").style.color = zz.color;
   $("#z-zone").textContent = zz.label;
 
-  // MVRV ratio (ถ้ามี)
   if (d.hasRatio && c.mvrv != null) {
     const mz = mvrvZone(c.mvrv);
     $("#mvrv-val").textContent = c.mvrv.toFixed(2);
@@ -45,15 +43,9 @@ function render() {
     $("#mvrv-zone").textContent = mz.label;
   } else {
     $("#mvrv-val").textContent = "—";
-    $("#mvrv-zone").textContent = "ไม่มีข้อมูลฟรี (ใช้ Z-Score แทน)";
-    // ซ่อนปุ่ม MVRV ratio ถ้าไม่มีข้อมูล
-    const btn = document.querySelector('#metric-seg button[data-metric="mvrv"]');
-    if (btn) btn.style.display = "none";
-    state.metric = "z";
-    document.querySelector('#metric-seg button[data-metric="z"]')?.classList.add("active");
+    $("#mvrv-zone").textContent = "ไม่มีข้อมูลฟรี (ใช้ Z-Score)";
   }
 
-  // ช่วง Z ในอดีต
   const zs = d.series.map((p) => p.z);
   $("#z-range").textContent = `${Math.min(...zs).toFixed(1)} … ${Math.max(...zs).toFixed(1)}`;
 
@@ -62,38 +54,145 @@ function render() {
     `<span class="sep">|</span> BTC` +
     `<span class="sep">|</span> ${d.series.length.toLocaleString()} วัน`;
   $("#clock").textContent = c.t;
+}
 
-  renderChart();
+// กรองช่วงเวลา + ลดความถี่ (รายเดือน/รายวัน) + คำนวณจุดสัญญาณ
+function buildView() {
+  const d = state.data;
+  let s = d.series;
+  if (state.tf > 0) {
+    const last = new Date(s[s.length - 1].t);
+    const cut = new Date(last.getTime() - state.tf * 86400000);
+    const cs = cut.toISOString().slice(0, 10);
+    s = s.filter((p) => p.t >= cs);
+  }
+  // ลดความถี่
+  let pts;
+  if (state.gran === "month") {
+    const byM = new Map();
+    for (const p of s) byM.set(p.t.slice(0, 7), p); // เก็บจุดสุดท้ายของเดือน
+    pts = [...byM.values()];
+  } else {
+    pts = s;
+  }
+  // จุดสัญญาณ: รายเดือน = ทุกจุดที่อยู่ในโซน · รายวัน = เฉพาะตอนเปลี่ยนโซน
+  let prev = null;
+  for (const p of pts) {
+    const z = p.zone;
+    if (z === "NORMAL" || p.price == null) {
+      p.mark = null;
+    } else if (state.gran === "month") {
+      p.mark = z;
+    } else {
+      p.mark = z !== prev ? z : null;
+    }
+    prev = z;
+  }
+  return pts;
 }
 
 function renderChart() {
   const d = state.data;
-  const m = d.hasRatio ? state.metric : "z";
-  const pts = d.series.filter((p) => p[m] != null);
+  const pts = buildView();
   const labels = pts.map((p) => p.t);
-  const values = pts.map((p) => p[m]);
-  const refs = m === "mvrv" ? [1, 3.7] : [0, 7];
+  const useRatio = d.hasRatio;
+  const mvrvVals = pts.map((p) => (useRatio ? p.mvrv : p.z));
+  const refs = useRatio ? [1, 3] : [0, 7];
+
+  const markData = (type) =>
+    pts.map((p) => (p.mark === type && p.price != null ? p.price : null));
 
   if (state.chart) state.chart.destroy();
   const ctx = $("#chart").getContext("2d");
+
   const datasets = [
     {
-      label: m === "mvrv" ? "MVRV" : "MVRV Z-Score",
-      data: values,
+      label: "ราคา BTC",
+      data: pts.map((p) => p.price),
       borderColor: "#e2683f",
-      borderWidth: 1.5,
+      borderWidth: 2,
       pointRadius: 0,
-      tension: 0.1,
+      yAxisID: "yPrice",
+      tension: 0.15,
+      spanGaps: true,
     },
-    ...refs.map((y, i) => ({
-      label: `เกณฑ์ ${y}`,
-      data: values.map(() => y),
-      borderColor: i === 0 ? "#35c184" : "#ef5b52",
+  ];
+  if (d.hasRealized) {
+    datasets.push({
+      label: "Realized Price",
+      data: pts.map((p) => p.realized),
+      borderColor: "#8a93a3",
+      borderWidth: 1.2,
+      borderDash: [5, 4],
+      pointRadius: 0,
+      yAxisID: "yPrice",
+      spanGaps: true,
+    });
+  }
+  datasets.push({
+    label: useRatio ? "MVRV" : "MVRV Z-Score",
+    data: mvrvVals,
+    borderColor: "#caa05a",
+    borderWidth: 1.2,
+    pointRadius: 0,
+    yAxisID: "yMvrv",
+    tension: 0.15,
+    spanGaps: true,
+  });
+  // เส้นเกณฑ์โซน
+  datasets.push(
+    {
+      label: useRatio ? "Fair Value 1.0" : "Z = 0",
+      data: labels.map(() => refs[0]),
+      borderColor: "rgba(53,193,132,0.55)",
       borderWidth: 1,
       borderDash: [6, 5],
       pointRadius: 0,
-    })),
-  ];
+      yAxisID: "yMvrv",
+    },
+    {
+      label: useRatio ? "Euphoria 3.0" : "Z = 7",
+      data: labels.map(() => refs[1]),
+      borderColor: "rgba(239,91,82,0.55)",
+      borderWidth: 1,
+      borderDash: [6, 5],
+      pointRadius: 0,
+      yAxisID: "yMvrv",
+    }
+  );
+  // สัญญาณ
+  datasets.push(
+    {
+      label: "BUY",
+      data: markData("BUY"),
+      yAxisID: "yPrice",
+      showLine: false,
+      pointStyle: "triangle",
+      pointRadius: 8,
+      pointBackgroundColor: "#2e9e5b",
+      pointBorderColor: "#2e9e5b",
+    },
+    {
+      label: "SELL",
+      data: markData("SELL"),
+      yAxisID: "yPrice",
+      showLine: false,
+      pointStyle: "rectRot",
+      pointRadius: 7,
+      pointBackgroundColor: "#d4a017",
+      pointBorderColor: "#d4a017",
+    },
+    {
+      label: "STRONG SELL",
+      data: markData("STRONG_SELL"),
+      yAxisID: "yPrice",
+      showLine: false,
+      pointStyle: "rectRot",
+      pointRadius: 8,
+      pointBackgroundColor: "#e0473b",
+      pointBorderColor: "#e0473b",
+    }
+  );
 
   state.chart = new Chart(ctx, {
     type: "line",
@@ -103,27 +202,57 @@ function renderChart() {
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: "index" },
       plugins: {
-        legend: { labels: { color: "#aeb6c2", boxWidth: 14 } },
+        legend: {
+          labels: {
+            color: "#aeb6c2",
+            boxWidth: 14,
+            // ซ่อนเส้นเกณฑ์ออกจาก legend
+            filter: (it) => !/^(Fair Value|Euphoria|Z =)/.test(it.text),
+          },
+        },
         tooltip: { callbacks: { title: (t) => t[0].label } },
       },
       scales: {
-        x: { ticks: { color: "#727c8b", maxTicksLimit: 8 }, grid: { display: false } },
-        y: { ticks: { color: "#727c8b" }, grid: { color: "#262d39" } },
+        x: { ticks: { color: "#727c8b", maxTicksLimit: 10 }, grid: { color: "#1d232e" } },
+        yPrice: {
+          position: "left",
+          ticks: {
+            color: "#727c8b",
+            callback: (v) => (v >= 1000 ? "$" + v / 1000 + "K" : "$" + v),
+          },
+          grid: { color: "#1d232e" },
+        },
+        yMvrv: {
+          position: "right",
+          min: 0,
+          max: useRatio ? 6 : undefined,
+          ticks: { color: "#caa05a" },
+          grid: { drawOnChartArea: false },
+        },
       },
     },
   });
 
   $("#chart-note").innerHTML =
-    m === "mvrv"
-      ? `เส้นประ <b class="g">เขียว = 1.0</b> (จุดคุ้มทุน) · <b class="r">แดง = 3.7</b> (โซนแพงมาก)`
-      : `เส้นประ <b class="g">เขียว = 0</b> (โซนจุดต่ำสุด) · <b class="r">แดง = 7</b> (โซนฟอง)`;
+    `🟢 <b class="g">BUY</b> = MVRV ต่ำ (ถูก) · 🟡 <b style="color:${AMBER}">SELL</b> = เริ่มแพง · 🔴 <b class="r">STRONG SELL</b> = แพงมาก (Euphoria) · ` +
+    (useRatio
+      ? `เส้นเกณฑ์ Fair Value 1.0 / Euphoria 3.0`
+      : `ใช้ MVRV Z-Score (เกณฑ์ 0 / 7) เพราะไม่มี MVRV ratio ฟรี`);
 }
 
-document.querySelectorAll("#metric-seg button").forEach((b) =>
+document.querySelectorAll("#tf-seg button").forEach((b) =>
   b.addEventListener("click", () => {
-    document.querySelectorAll("#metric-seg button").forEach((x) => x.classList.remove("active"));
+    document.querySelectorAll("#tf-seg button").forEach((x) => x.classList.remove("active"));
     b.classList.add("active");
-    state.metric = b.dataset.metric;
+    state.tf = Number(b.dataset.tf);
+    if (state.data) renderChart();
+  })
+);
+document.querySelectorAll("#gran-seg button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#gran-seg button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    state.gran = b.dataset.gran;
     if (state.data) renderChart();
   })
 );

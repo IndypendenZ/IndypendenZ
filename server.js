@@ -744,6 +744,13 @@ async function fetchBD(slug) {
     .filter((x) => x.t && x.v != null);
 }
 
+// โซน/สัญญาณจาก MVRV ratio (ถ้ามี) ไม่งั้นใช้ Z-Score
+function mvrvZoneCode(mvrv, z) {
+  if (mvrv != null)
+    return mvrv < 1 ? "BUY" : mvrv > 3 ? "STRONG_SELL" : mvrv > 2.4 ? "SELL" : "NORMAL";
+  return z < 0 ? "BUY" : z > 7 ? "STRONG_SELL" : z > 5 ? "SELL" : "NORMAL";
+}
+
 app.get("/api/mvrv", async (_req, res) => {
   const key = "mvrv:btc";
   const cached = getCached(key, 3600_000); // แคช 1 ชม.
@@ -751,22 +758,42 @@ app.get("/api/mvrv", async (_req, res) => {
   try {
     const z = await fetchBD("mvrv-zscore");
     if (z.length < 30) throw new Error("ข้อมูล MVRV ไม่พอ");
-    // โบนัส: MVRV ratio (ถ้ามี endpoint)
+
+    // เสริม: MVRV ratio + realized price (bitcoin-data) + ราคา BTC (CoinGecko)
     let ratioMap = null;
+    let realizedMap = null;
+    let priceMap = null;
     try {
       const m = await fetchBD("mvrv");
       if (m.length) ratioMap = new Map(m.map((p) => [p.t, p.v]));
-    } catch {
-      /* ไม่มีก็ไม่เป็นไร แสดงแค่ Z-Score */
-    }
-    const series = z.map((p) => ({
-      t: p.t,
-      z: p.v,
-      mvrv: ratioMap ? ratioMap.get(p.t) ?? null : null,
-    }));
+    } catch {}
+    try {
+      const rp = await fetchBD("realized-price");
+      if (rp.length) realizedMap = new Map(rp.map((p) => [p.t, p.v]));
+    } catch {}
+    try {
+      const mk = await cgFetch(`${COINGECKO}/coins/bitcoin/market_chart?vs_currency=usd&days=max`);
+      priceMap = new Map(
+        (mk.prices || []).map(([ms, p]) => [new Date(ms).toISOString().slice(0, 10), p])
+      );
+    } catch {}
+
+    const series = z.map((p) => {
+      const mvrv = ratioMap ? ratioMap.get(p.t) ?? null : null;
+      return {
+        t: p.t,
+        z: p.v,
+        mvrv,
+        price: priceMap ? priceMap.get(p.t) ?? null : null,
+        realized: realizedMap ? realizedMap.get(p.t) ?? null : null,
+        zone: mvrvZoneCode(mvrv, p.v),
+      };
+    });
     const data = {
       asset: "btc",
       hasRatio: Boolean(ratioMap),
+      hasRealized: Boolean(realizedMap),
+      hasPrice: Boolean(priceMap),
       current: series[series.length - 1],
       series,
     };

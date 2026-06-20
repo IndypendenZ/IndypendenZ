@@ -608,12 +608,17 @@ h1 {
 }
 
 /* ---- MVRV chart ---- */
+.chart-title {
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
+  font-size: 20px;
+  margin: 4px 0 12px;
+}
 .mvrv-chart {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 16px;
-  height: 380px;
+  height: 460px;
   margin-bottom: 8px;
 }
 

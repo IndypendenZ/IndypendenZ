@@ -35,10 +35,15 @@
       </header>
 
       <div class="grid-controls">
-        <span class="gc-lab">กราฟ</span>
-        <div class="sort-seg" id="metric-seg">
-          <button data-metric="z" class="active">MVRV Z-Score</button>
-          <button data-metric="mvrv">MVRV Ratio</button>
+        <div class="sort-seg" id="tf-seg">
+          <button data-tf="365">1Y</button>
+          <button data-tf="730">2Y</button>
+          <button data-tf="1460">4Y</button>
+          <button data-tf="0" class="active">MAX</button>
+        </div>
+        <div class="sort-seg" id="gran-seg">
+          <button data-gran="month" class="active">รายเดือน</button>
+          <button data-gran="day">รายวัน</button>
         </div>
       </div>
 
@@ -62,6 +67,7 @@
         </div>
       </div>
 
+      <h3 class="chart-title"><span class="btc">●</span> ราคา BTC + MVRV + สัญญาณซื้อขาย</h3>
       <div class="mvrv-chart">
         <canvas id="chart"></canvas>
       </div>
