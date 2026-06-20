@@ -102,15 +102,19 @@ function renderOrder(d) {
 const consensus = (c) => Object.values(c.signals).filter((s) => s === "LONG").length;
 
 function renderCards(d) {
-  // ⭐ โปรดก่อนเสมอ แล้วเรียงตามตัวเลือก (สัญญาณ / RSI / Volume)
+  // ⭐ โปรด → เข้าเกณฑ์ (LONG) → แล้วเรียงตามตัวเลือกภายในแต่ละกลุ่ม
   const ordered = [...d.coins].sort((a, b) => {
     const af = state.fav.has(a.sym) ? 0 : 1;
     const bf = state.fav.has(b.sym) ? 0 : 1;
     if (af !== bf) return af - bf;
+    // เหรียญที่เข้าเกณฑ์ถือ (LONG) ลอยขึ้นบนเสมอ
+    const al = a.state === "LONG" ? 0 : 1;
+    const bl = b.state === "LONG" ? 0 : 1;
+    if (al !== bl) return al - bl;
+    // เรียงภายในกลุ่มตามตัวเลือก
     if (state.sortBy === "rsi") return (b.rsiLast ?? 0) - (a.rsiLast ?? 0);
     if (state.sortBy === "vol") return (b.vol ?? 0) - (a.vol ?? 0);
-    // signal: เข้าเกณฑ์มากสุดก่อน → ตามด้วย volume
-    const cd = consensus(b) - consensus(a);
+    const cd = consensus(b) - consensus(a); // signal
     if (cd !== 0) return cd;
     return (b.vol ?? 0) - (a.vol ?? 0);
   });
