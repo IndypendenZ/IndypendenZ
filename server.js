@@ -570,6 +570,26 @@ async function binanceCloses(symbol, pages = 3) {
   return batches.flat().map((x) => parseFloat(x[4]));
 }
 
+// ราคาปิดรายวัน BTC เป็น Map(วันที่ -> ราคา) สำหรับกราฟ MVRV
+async function binancePriceMap(symbol = "BTCUSDT", pages = 4) {
+  let endTime = Date.now();
+  const batches = [];
+  for (let i = 0; i < pages; i++) {
+    const url = `${BINANCE}/api/v3/klines?symbol=${symbol}&interval=1d&limit=1000&endTime=${endTime}`;
+    const r = await fetch(url, { headers: { accept: "application/json" } });
+    if (!r.ok) break;
+    const k = await r.json();
+    if (!Array.isArray(k) || !k.length) break;
+    batches.unshift(k);
+    endTime = k[0][0] - 1;
+    if (k.length < 1000) break;
+  }
+  const map = new Map();
+  for (const x of batches.flat())
+    map.set(new Date(x[0]).toISOString().slice(0, 10), parseFloat(x[4]));
+  return map;
+}
+
 // ดึง Top N เหรียญตามสภาพคล่อง (quote volume) จาก Binance — เลือกแบบเป็นกลาง
 async function binanceTopSymbols(n = 50) {
   const r = await fetch(`${BINANCE}/api/v3/ticker/24hr`, {
@@ -772,11 +792,15 @@ app.get("/api/mvrv", async (_req, res) => {
       if (rp.length) realizedMap = new Map(rp.map((p) => [p.t, p.v]));
     } catch {}
     try {
-      const mk = await cgFetch(`${COINGECKO}/coins/bitcoin/market_chart?vs_currency=usd&days=max`);
-      priceMap = new Map(
-        (mk.prices || []).map(([ms, p]) => [new Date(ms).toISOString().slice(0, 10), p])
-      );
-    } catch {}
+      priceMap = await binancePriceMap("BTCUSDT", 3); // ราคาจาก Binance (เสถียร)
+    } catch {
+      try {
+        const mk = await cgFetch(`${COINGECKO}/coins/bitcoin/market_chart?vs_currency=usd&days=max`);
+        priceMap = new Map(
+          (mk.prices || []).map(([ms, p]) => [new Date(ms).toISOString().slice(0, 10), p])
+        );
+      } catch {}
+    }
 
     const series = z.map((p) => {
       const mvrv = ratioMap ? ratioMap.get(p.t) ?? null : null;
