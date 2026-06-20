@@ -32,7 +32,7 @@ const WRAPPED = new Set([
 ]);
 
 // จำนวนเหรียญ tier บน (เรียงตามมาร์เก็ตแคป) ที่ใช้ในหน้า RSI Signal
-const SIGNAL_COUNT = 20;
+const SIGNAL_COUNT = 50;
 
 // เกณฑ์คัดเหรียญ "ผ่านเกณฑ์" แบบเป็นกลาง (ไม่ดูผลกำไร → ไม่มี survivorship bias)
 const PASS_MIN_YEARS = 2; // ประวัติ ≥ 2 ปี (ตัดเหรียญใหม่/ปั่น)
