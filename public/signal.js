@@ -77,10 +77,18 @@ function renderOrder(d) {
 }
 
 function renderCards(d) {
-  $("#signal-grid").innerHTML = d.coins
+  // เรียง: เหรียญที่เข้าเกณฑ์ (LONG) ขึ้นก่อน แล้วเรียงตาม RSI มาก→น้อย
+  const ordered = [...d.coins].sort((a, b) => {
+    const al = a.state === "LONG" ? 0 : 1;
+    const bl = b.state === "LONG" ? 0 : 1;
+    if (al !== bl) return al - bl;
+    return (b.rsiLast ?? 0) - (a.rsiLast ?? 0);
+  });
+  $("#signal-grid").innerHTML = ordered
     .map((c) => {
       const isLong = c.state === "LONG";
       return `<div class="card ${isLong ? "is-long" : ""}" id="c-${c.sym}">
+        ${isLong ? '<div class="long-tag">✓ เข้าเกณฑ์ถือ</div>' : ""}
         <div class="card-top">
           <span class="sym">${c.sym}</span>
           <span class="live">LIVE</span>

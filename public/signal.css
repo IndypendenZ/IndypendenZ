@@ -160,14 +160,37 @@ h1 {
   margin-bottom: 50px;
 }
 .card {
+  position: relative;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 18px;
 }
 .card.is-long {
-  border-color: #bcd3c2;
-  background: #f3f7f2;
+  border: 2px solid var(--green);
+  background: #edf6ee;
+  box-shadow: 0 6px 22px rgba(47, 125, 82, 0.16);
+}
+.long-tag {
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  background: var(--green);
+  color: #fff;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(47, 125, 82, 0.3);
+}
+.card.is-long .sym {
+  color: var(--green);
+}
+.card.is-long .badge.long {
+  background: var(--green);
+  color: #fff;
+  font-weight: 700;
 }
 .card-top {
   display: flex;
