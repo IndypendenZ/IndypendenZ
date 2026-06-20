@@ -3,13 +3,13 @@ const $ = (s) => document.querySelector(s);
 
 const AMBER = "#e0a93c";
 function mvrvZone(v) {
-  if (v < 1) return { label: "ต่ำกว่ามูลค่าจริง · โซนสะสม (底)", color: "var(--green)" };
+  if (v < 1) return { label: "ต่ำกว่ามูลค่าจริง · โซนสะสม (จุดต่ำสุดของรอบ)", color: "var(--green)" };
   if (v < 2.4) return { label: "ปกติ", color: "var(--ink)" };
   if (v < 3.7) return { label: "เริ่มแพง · ตลาดร้อนขึ้น", color: AMBER };
   return { label: "แพงมาก · ระวังจุดสูงสุด", color: "var(--red)" };
 }
 function zZone(v) {
-  if (v < 0.1) return { label: "โซน底 · โอกาสสะสมในอดีต", color: "var(--green)" };
+  if (v < 0.1) return { label: "โซนจุดต่ำสุด · โอกาสสะสมในอดีต", color: "var(--green)" };
   if (v < 2) return { label: "ปกติ–ถูก", color: "var(--ink)" };
   if (v < 7) return { label: "แพงขึ้น", color: AMBER };
   return { label: "โซนฟอง · ใกล้จุดสูงสุดในอดีต", color: "var(--red)" };
@@ -116,7 +116,7 @@ function renderChart() {
   $("#chart-note").innerHTML =
     m === "mvrv"
       ? `เส้นประ <b class="g">เขียว = 1.0</b> (จุดคุ้มทุน) · <b class="r">แดง = 3.7</b> (โซนแพงมาก)`
-      : `เส้นประ <b class="g">เขียว = 0</b> (โซน底) · <b class="r">แดง = 7</b> (โซนฟอง)`;
+      : `เส้นประ <b class="g">เขียว = 0</b> (โซนจุดต่ำสุด) · <b class="r">แดง = 7</b> (โซนฟอง)`;
 }
 
 document.querySelectorAll("#metric-seg button").forEach((b) =>
