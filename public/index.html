@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CryptoDash — แดชบอร์ดคริปโตส่วนตัว</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">◆</span>
+        <div>
+          <h1>CryptoDash</h1>
+          <p class="sub">แดชบอร์ดคริปโตส่วนตัว · ดูราคา + วิเคราะห์ด้วย AI</p>
+        </div>
+      </div>
+      <div class="controls">
+        <input
+          id="search"
+          type="search"
+          placeholder="ค้นหาเหรียญ เช่น bitcoin, eth…"
+          autocomplete="off"
+        />
+        <div class="seg" id="currency">
+          <button data-vs="usd" class="active">USD</button>
+          <button data-vs="thb">THB</button>
+        </div>
+        <button id="refresh" class="ghost" title="โหลดราคาใหม่">↻</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button data-tab="all" class="active">ทั้งหมด</button>
+      <button data-tab="watch">⭐ รายการที่ติดตาม</button>
+      <button data-tab="gainers">📈 ขึ้นมากสุด (24ชม)</button>
+      <button data-tab="losers">📉 ลงมากสุด (24ชม)</button>
+    </nav>
+
+    <main>
+      <div id="status-bar" class="status-bar"></div>
+      <div class="table-wrap">
+        <table id="market-table">
+          <thead>
+            <tr>
+              <th class="star-col"></th>
+              <th class="rank-col">#</th>
+              <th>เหรียญ</th>
+              <th class="num">ราคา</th>
+              <th class="num">1ชม</th>
+              <th class="num">24ชม</th>
+              <th class="num">7วัน</th>
+              <th class="num hide-sm">ปริมาณ (24ชม)</th>
+              <th class="num hide-sm">มาร์เก็ตแคป</th>
+              <th class="spark-col hide-sm">7วัน</th>
+            </tr>
+          </thead>
+          <tbody id="market-body">
+            <tr>
+              <td colspan="10" class="loading">กำลังโหลดข้อมูล…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        ข้อมูลราคาจาก CoinGecko · เว็บนี้ใช้ส่วนตัว ไม่มีระบบเทรด ·
+        การวิเคราะห์ด้วย AI เป็นข้อมูลเชิงการศึกษา ไม่ใช่คำแนะนำการลงทุน
+      </p>
+    </main>
+
+    <!-- โมดัลรายละเอียดเหรียญ -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-card">
+        <button class="close" id="modal-close">✕</button>
+        <div class="modal-head">
+          <img id="m-img" alt="" width="40" height="40" />
+          <div>
+            <h2 id="m-name">—</h2>
+            <span id="m-rank" class="pill"></span>
+          </div>
+          <div class="m-price">
+            <div id="m-price" class="big">—</div>
+            <div id="m-change" class="chg">—</div>
+          </div>
+        </div>
+
+        <div class="range-seg" id="range">
+          <button data-days="1">24ชม</button>
+          <button data-days="7" class="active">7วัน</button>
+          <button data-days="30">30วัน</button>
+          <button data-days="90">90วัน</button>
+        </div>
+        <div class="chart-box">
+          <canvas id="chart"></canvas>
+        </div>
+
+        <div class="ai-section">
+          <div class="ai-head">
+            <h3>🤖 วิเคราะห์ด้วย AI (Claude)</h3>
+            <button id="analyze-btn" class="primary">วิเคราะห์เหรียญนี้</button>
+          </div>
+          <div id="ai-output" class="ai-output">
+            กดปุ่ม "วิเคราะห์เหรียญนี้" เพื่อให้ AI สรุปข้อมูลตลาดล่าสุดให้
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
