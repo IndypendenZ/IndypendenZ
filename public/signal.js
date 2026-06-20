@@ -7,6 +7,8 @@ const state = {
   sortBy: localStorage.getItem("sig_sort") || "signal",
   filterMode: localStorage.getItem("sig_filter") || "pass",
   meta: null,
+  aiEnabled: false,
+  chatHistory: [],
 };
 
 function saveSets() {
@@ -72,9 +74,7 @@ async function load() {
     renderStatus(data);
     renderOrder();
     renderCards();
-    renderStats(data);
-    renderStrategies(data);
-    renderTable(data);
+    renderFilterNote();
     connectWS();
   } catch (e) {
     $("#statusbar").innerHTML = `<span class="r">โหลดไม่สำเร็จ: ${e.message}</span> — หน้านี้ต้องเข้าถึง api.binance.com (ปกติบนเครื่องตัวเองได้)`;
@@ -106,6 +106,17 @@ function setFilterLabels() {
   const af = document.querySelector('#filter-seg button[data-f="all"]');
   if (pf) pf.textContent = `ผ่านเกณฑ์ (${m.nPass})`;
   if (af) af.textContent = `ทั้งหมด (${m.nAll})`;
+}
+
+function renderFilterNote() {
+  const m = state.meta;
+  const el = $("#filter-note");
+  if (!m || !el) return;
+  if (state.filterMode === "pass") {
+    el.innerHTML = `แสดงเฉพาะ <b>เหรียญที่ผ่านเกณฑ์</b> (${m.nPass}/${m.nAll}) — ประวัติ ≥ ${m.minYears} ปี และความผันผวน ≤ ${Math.round(m.maxVol * 100)}%/ปี · กรองแบบเป็นกลาง (ไม่ดูผลกำไร → ไม่มี survivorship bias)`;
+  } else {
+    el.innerHTML = `แสดง <b>ทั้งหมด</b> (${m.nAll} เหรียญ Top by volume) — รวมเหรียญผันผวนสูง/ใหม่ที่สัญญาณอาจรบกวนมากกว่า`;
+  }
 }
 
 function renderOrder() {
@@ -163,7 +174,9 @@ function renderCards() {
         </div>
         ${
           c.vol
-            ? `<div class="meta">Vol ${fmtBig(c.vol)} · อันดับ #${state.bySym[c.sym]?.volRank ?? "—"}</div>`
+            ? `<div class="meta">Vol ${fmtBig(c.vol)} · อันดับ #${state.bySym[c.sym]?.volRank ?? "—"}${
+                c.annVol != null ? ` · ผันผวน ${Math.round(c.annVol * 100)}%/ปี` : ""
+              }</div>`
             : ""
         }
         <div class="rsi-big ${rsiClass(c.rsiLast)}" data-rsi>${c.rsiLast == null ? "—" : c.rsiLast.toFixed(1)}
@@ -408,11 +421,131 @@ document.querySelectorAll("#filter-seg button").forEach((b) =>
     if (state.coins.length) {
       renderOrder();
       renderCards();
+      renderFilterNote();
     }
   })
 );
 document.querySelectorAll("#filter-seg button").forEach((b) =>
   b.classList.toggle("active", b.dataset.f === state.filterMode)
 );
+
+// ===== AI: วิเคราะห์สัญญาณ + แชท =====
+async function streamPost(url, payload, onChunk) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok || !r.body) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || r.statusText);
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onChunk(dec.decode(value, { stream: true }));
+  }
+}
+
+function buildSummary() {
+  const list = shownCoins();
+  return {
+    โหมด: state.filterMode === "pass" ? "ผ่านเกณฑ์" : "ทั้งหมด",
+    จำนวนเหรียญ: list.length,
+    เข้าเกณฑ์ถือ_LONG: list.filter((c) => c.state === "LONG").map((c) => c.sym),
+    เหรียญ: list.slice(0, 30).map((c) => ({
+      sym: c.sym,
+      สถานะ: c.state,
+      rsi: c.rsiLast == null ? null : Math.round(c.rsiLast),
+      สัญญาณLONG: Object.values(c.signals).filter((s) => s === "LONG").length + "/5",
+    })),
+  };
+}
+
+$("#signal-analyze").addEventListener("click", async () => {
+  const out = $("#signal-ai-out");
+  const btn = $("#signal-analyze");
+  out.classList.remove("hidden");
+  if (!state.aiEnabled) {
+    out.textContent = "⚠️ ต้องตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์ก่อนถึงจะใช้ AI ได้";
+    return;
+  }
+  out.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "กำลังวิเคราะห์…";
+  try {
+    await streamPost("/api/signal-analysis", { summary: buildSummary() }, (t) => {
+      out.textContent += t;
+    });
+  } catch (e) {
+    out.textContent = "เกิดข้อผิดพลาด: " + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🤖 วิเคราะห์สัญญาณอีกครั้ง";
+  }
+});
+
+// แชท
+function addChatMsg(role, text) {
+  const log = $("#chat-log");
+  const div = document.createElement("div");
+  div.className = "chat-msg " + (role === "user" ? "user" : "bot");
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+$("#chat-fab").addEventListener("click", () => {
+  $("#chat-panel").classList.toggle("hidden");
+  if (!$("#chat-panel").classList.contains("hidden")) $("#chat-input").focus();
+});
+$("#chat-close").addEventListener("click", () => $("#chat-panel").classList.add("hidden"));
+$("#chat-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  if (!state.aiEnabled) {
+    addChatMsg("bot", "⚠️ ต้องตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์ก่อน");
+    return;
+  }
+  input.value = "";
+  addChatMsg("user", text);
+  state.chatHistory.push({ role: "user", content: text });
+  const sendBtn = $("#chat-form button");
+  sendBtn.disabled = true;
+  const botDiv = addChatMsg("bot", "…");
+  let acc = "";
+  try {
+    await streamPost(
+      "/api/chat",
+      { messages: state.chatHistory.slice(-12), snapshot: buildSummary() },
+      (t) => {
+        acc += t;
+        botDiv.textContent = acc;
+        $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
+      }
+    );
+    state.chatHistory.push({ role: "assistant", content: acc });
+  } catch (err) {
+    botDiv.textContent = "เกิดข้อผิดพลาด: " + err.message;
+  } finally {
+    sendBtn.disabled = false;
+  }
+});
+
+// เช็คว่าเปิด AI ได้ไหม
+fetch("/api/status")
+  .then((r) => r.json())
+  .then((s) => {
+    state.aiEnabled = s.aiEnabled;
+    if (!s.aiEnabled) {
+      $("#chat-fab").classList.add("hidden");
+      $("#signal-analyze").classList.add("hidden");
+    }
+  })
+  .catch(() => {});
 
 load();

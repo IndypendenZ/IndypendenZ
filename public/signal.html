@@ -39,7 +39,13 @@
         <div class="order-label">คำสั่ง ณ ตอนนี้</div>
         <h2 id="order-title">—</h2>
         <p id="order-sub" class="order-sub"></p>
+        <div class="ai-bar">
+          <button id="signal-analyze" class="ai-btn">🤖 วิเคราะห์สัญญาณด้วย AI</button>
+        </div>
+        <div id="signal-ai-out" class="signal-ai-out hidden"></div>
       </section>
+
+      <p class="filter-note" id="filter-note"></p>
 
       <div class="grid-controls">
         <span class="gc-lab">แสดง</span>
@@ -56,119 +62,30 @@
       </div>
       <section id="signal-grid" class="signal-grid"></section>
 
-      <!-- Track record -->
-      <h2 class="section-h">ผลทดสอบย้อนหลัง · Track Record</h2>
-      <p class="bt-intro">
-        จำลองลงทุน <em class="hl">$10,000 ต่อเหรียญ</em> ในเหรียญที่ติดตาม
-        โดยใช้กฎ RSI 55/45 (เข้าเมื่อ RSI&gt;55 · ออกเป็นเงินสดเมื่อ RSI&lt;45)
-        คิดค่าธรรมเนียม taker 0.04%/ครั้ง เทียบกับการซื้อถือยาว (Buy &amp; Hold)
-        — <em>ทุกตัวเลขคำนวณสดในเบราว์เซอร์จากราคาจริง Binance ไม่ใช่ค่าที่บันทึกไว้</em>
-      </p>
+      <footer class="foot">
+        CryptoDash · RSI Signal · ใช้ส่วนตัว · ข้อมูล Binance spot ·
+        <b>เพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน</b> ·
+        สัญญาณอิงแท่งปิดล่าสุด · คริปโตผันผวนสูง อาจสูญเสียเงินต้น
+      </footer>
+    </div>
 
-      <div class="warn-box">
-        ⚠️ <b>โหมด "ผ่านเกณฑ์" = กรองจาก Top ~50 (volume) เหลือเฉพาะเหรียญที่มีประวัติ ≥ 3 ปี
-        และซื้อถือยาว CAGR &gt; 40%</b> — ช่วยตัดเหรียญใหม่/ผันผวนแบบมีคนปั่นออก
-        ทำให้สัญญาณนิ่งขึ้น · <b>แต่</b> การกรองด้วยผลกำไรในอดีต = performance filter
-        จึงมี <em>survivorship/selection bias</em> (มองโลกในแง่ดีกว่าความจริง) · อ่านเป็นข้อมูลศึกษา
-        ไม่ใช่คำแนะนำการลงทุน
+    <!-- แชท AI -->
+    <button id="chat-fab" class="chat-fab" title="ถาม AI">🤖</button>
+    <div id="chat-panel" class="chat-panel hidden">
+      <div class="chat-head">
+        <span>🤖 ผู้ช่วย AI · RSI Signal</span>
+        <button id="chat-close" type="button">✕</button>
       </div>
-
-      <div id="stat-cards" class="stat-cards"></div>
-
-      <div class="table-wrap">
-        <table class="bt-table">
-          <thead>
-            <tr>
-              <th>เหรียญ</th>
-              <th class="num">RSI $10K →</th>
-              <th class="num">B&amp;H $10K →</th>
-              <th class="num">CAGR</th>
-              <th class="num">Sharpe</th>
-              <th class="num">MDD</th>
-              <th class="num">เทรด</th>
-            </tr>
-          </thead>
-          <tbody id="bt-body">
-            <tr><td colspan="7" class="loading">กำลังคำนวณ…</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- เปรียบเทียบกลยุทธ์ -->
-      <h2 class="section-h">เปรียบเทียบกลยุทธ์ · Strategy Comparison</h2>
-      <p class="bt-intro">
-        รันแต่ละเกณฑ์บนเหรียญชุดเดียวกัน (สมมติ $10k/เหรียญ ค่าธรรมเนียม 0.04%/ครั้ง)
-        แล้วดูว่าตัวไหนให้ผลรวมดีกว่ากัน — ตัวเลขยิ่งสูง (CAGR/Sharpe) และ MDD
-        ยิ่งน้อย (ติดลบน้อย) ยิ่งดี · <em>คำนวณสดจากราคา Binance</em>
-      </p>
-      <div class="table-wrap">
-        <table class="bt-table">
-          <thead>
-            <tr>
-              <th>กลยุทธ์</th>
-              <th class="num">รวม $10K/เหรียญ →</th>
-              <th class="num">CAGR เฉลี่ย</th>
-              <th class="num">Sharpe เฉลี่ย</th>
-              <th class="num">MDD แย่สุด</th>
-              <th class="num">เทรดเฉลี่ย</th>
-            </tr>
-          </thead>
-          <tbody id="strat-body">
-            <tr><td colspan="6" class="loading">กำลังคำนวณ…</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="bt-intro" style="margin-top:-18px">
-        💡 <b>RSI + กรองเทรนด์ EMA200</b> = เข้า LONG เฉพาะตอน RSI&gt;55
-        <em>และ</em> ราคาอยู่เหนือเส้น EMA200 (ตัดสัญญาณหลอกช่วงตลาดหมี) ·
-        <b>MA Cross</b> = SMA50 ตัด SMA200 · <b>MACD</b> = เส้น MACD ตัด signal ·
-        <b>Donchian</b> = ทำ new high 20 วันเข้า / หลุด low 10 วันออก
-      </p>
-
-      <!-- กฎ + การคัดเลือก -->
-      <div class="two-col">
-        <div class="info-box">
-          <h3>กฎของกลยุทธ์</h3>
-          <p>เป็น state-machine ง่ายๆ ที่ดูค่า RSI ของ<b>แท่งวันที่ปิดแล้ว</b> (กัน look-ahead):</p>
-          <pre>RSI &gt; 55  →  เข้า LONG (ถือเหรียญ)
-RSI &lt; 45  →  ออก CASH (ถือเงินสด)
-45–55     →  คงสถานะเดิม</pre>
-          <ul>
-            <li>ช่วง <b>45–55</b> เป็น dead band กัน whipsaw — ไม่เด้งเข้าออกถี่</li>
-            <li>ทำกำไรช่วงขาขึ้น (เข้าเร็ว) และ <b>หนีตลาดหมี</b> (ออกเป็นเงินสดก่อนดิ่ง)</li>
-            <li>เป็น long-only — ไม่มี short, ไม่มี leverage</li>
-            <li>บนการ์ด: ตัวเลขใหญ่ = in-progress RSI (ถ้าปิดที่ราคาสด) · สถานะ LONG/CASH เปลี่ยนเฉพาะเมื่อแท่งวันปิดจริง</li>
-          </ul>
-        </div>
-        <div class="info-box">
-          <h3>RSI 14 คืออะไร</h3>
-          <p>
-            <em class="hl">RSI (Relative Strength Index)</em>
-            วัดแรงซื้อเทียบแรงขายในช่วง <b>14 วันล่าสุด</b> ออกมาเป็นเลข 0–100
-            ด้วยวิธี Wilder smoothing — ค่าสูงแปลว่าราคากำลังแข็งแรง (momentum ขาขึ้น)
-            ค่าต่ำแปลว่าอ่อนแรง
-          </p>
-          <p>
-            เกณฑ์ 55/45 จึงเป็นการบอกว่า "ถือเมื่อแข็งแรงพอ
-            และถอยเป็นเงินสดเมื่ออ่อนแรง" — ต่างจากเกณฑ์ 30/70 ทั่วไปตรงที่
-            55/45 ให้สัญญาณเร็วและสม่ำเสมอกว่าในการทดสอบข้ามหลายเหรียญ
-          </p>
+      <div id="chat-log" class="chat-log">
+        <div class="chat-msg bot">
+          ถามได้เลยครับ เช่น "ตอนนี้เหรียญไหนน่าจับตา", "RSI กับ MACD ต่างกันยังไง",
+          "สัญญาณตอนนี้บอกอะไร"
         </div>
       </div>
-
-      <div class="disc-box">
-        <h3>⚠️ ข้อจำกัดความรับผิดชอบ / Disclaimer</h3>
-        <ul>
-          <li><b>เพื่อการศึกษาเท่านั้น</b> ไม่ใช่คำแนะนำการลงทุน การเงิน ภาษี หรือคำเสนอซื้อขายใดๆ</li>
-          <li>สัญญาณคำนวณจาก<b>แท่งปิดล่าสุดเท่านั้น</b> (daily close) แท่งวันปัจจุบันที่ยังไม่ปิดถูกตัดทิ้ง — สถานะอาจเปลี่ยนเมื่อแท่งวันนี้ปิดจริง</li>
-          <li><b>ผลทดสอบย้อนหลังไม่รับประกันผลในอนาคต</b> · คริปโตผันผวนสูง อาจสูญเสียเงินต้นทั้งจำนวน · regime เปลี่ยนได้</li>
-          <li>ผลลัพธ์ไม่รวม slippage, funding และภาษี — ผลตอบแทนจริงอาจต่ำกว่าที่แสดงมาก</li>
-          <li>การคัดเหรียญ = selection / survivorship bias — เลือกเฉพาะตัวที่เคยทำกำไรในอดีต</li>
-          <li>ผู้ลงทุนต้องประเมินความเสี่ยงเอง · ผู้จัดทำไม่รับผิดชอบความเสียหายใดๆ</li>
-        </ul>
-      </div>
-
-      <footer class="foot">CryptoDash · RSI Signal · ใช้ส่วนตัว · ข้อมูล Binance spot</footer>
+      <form id="chat-form" class="chat-form">
+        <input id="chat-input" placeholder="พิมพ์คำถาม…" autocomplete="off" />
+        <button type="submit">ส่ง</button>
+      </form>
     </div>
 
     <script src="/signal.js"></script>

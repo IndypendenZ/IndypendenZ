@@ -25,9 +25,9 @@ const STABLE = new Set([
   "USTC", "EUR", "EURI", "AEUR", "XUSD", "USD1",
 ]);
 
-// เกณฑ์คัดเหรียญ "ผ่านเกณฑ์" (แบบ cointh): ประวัติยาวพอ + ผลตอบแทนดี
-const PASS_MIN_YEARS = 3; // มีประวัติอย่างน้อย 3 ปี (ตัดเหรียญใหม่/ปั่น)
-const PASS_MIN_CAGR = 0.4; // ซื้อถือยาว CAGR > 40% ตลอดประวัติ
+// เกณฑ์คัดเหรียญ "ผ่านเกณฑ์" แบบเป็นกลาง (ไม่ดูผลกำไร → ไม่มี survivorship bias)
+const PASS_MIN_YEARS = 2; // ประวัติ ≥ 2 ปี (ตัดเหรียญใหม่/ปั่น)
+const PASS_MAX_VOL = 1.5; // ความผันผวน ≤ 150%/ปี (ตัดเหรียญสวิงแรงแบบมีคนปั่น)
 
 // สร้าง client เฉพาะเมื่อมี ANTHROPIC_API_KEY (อ่านจาก env อัตโนมัติ)
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
@@ -459,6 +459,16 @@ function runStrat(closes, stateAt, fee = 0.0004) {
   };
 }
 
+// ความผันผวนต่อปี (annualized volatility) จากผลตอบแทนรายวัน
+function annualVol(closes) {
+  const rets = [];
+  for (let i = 1; i < closes.length; i++) rets.push(closes[i] / closes[i - 1] - 1);
+  const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
+  const variance =
+    rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length || 1);
+  return Math.sqrt(variance) * Math.sqrt(365);
+}
+
 // คำนวณทุกกลยุทธ์ของเหรียญเดียว
 function computeCoin(sym, closes) {
   const { rsi, avgGain, avgLoss } = rsiSeries(closes, 14);
@@ -503,6 +513,7 @@ function computeCoin(sym, closes) {
     rsiLast: rsi[rsi.length - 1],
     avgGain,
     avgLoss,
+    annVol: annualVol(closes),
     signals: {
       rsi: strat.rsi.state,
       rsiEma: strat.rsiEma.state,
@@ -585,10 +596,10 @@ app.get("/api/signal", async (_req, res) => {
     const coins = [];
     for (const { sym: base, vol } of symbols) {
       try {
-        const closes = await binanceCloses(base + "USDT", 3); // ~3000 แท่ง (≈8 ปี)
+        const closes = await binanceCloses(base + "USDT", 2); // ~2000 แท่ง (≈5.5 ปี)
         if (closes.length < 60) continue;
         const coin = { ...computeCoin(base, closes), vol };
-        coin.pass = coin.years >= PASS_MIN_YEARS && coin.cagrBH >= PASS_MIN_CAGR;
+        coin.pass = coin.years >= PASS_MIN_YEARS && coin.annVol <= PASS_MAX_VOL;
         coins.push(coin);
       } catch {
         /* ข้ามเหรียญที่ดึงไม่ได้ */
@@ -623,7 +634,7 @@ app.get("/api/signal", async (_req, res) => {
         nAll: coins.length,
         nPass: passing.length,
         minYears: PASS_MIN_YEARS,
-        minCagr: PASS_MIN_CAGR,
+        maxVol: PASS_MAX_VOL,
         trackYears: Math.max(...base.map((c) => c.years)),
         invested: base.length * 10000,
       },
@@ -723,6 +734,28 @@ app.post("/api/market-analysis", async (req, res) => {
     system,
     messages: [{ role: "user", content: userPrompt }],
     maxTokens: 1500,
+    effort: "medium",
+  });
+});
+
+// ---- AI วิเคราะห์สัญญาณ RSI (หน้า Signal) ----
+app.post("/api/signal-analysis", async (req, res) => {
+  if (!anthropic)
+    return res.status(503).json({ error: "ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์" });
+  const { summary = null } = req.body || {};
+  if (!summary) return res.status(400).json({ error: "ไม่มีข้อมูลสัญญาณ" });
+  const system =
+    "คุณเป็นผู้ช่วยวิเคราะห์สัญญาณเทคนิคคริปโตเชิงการศึกษา ภาษาไทย " +
+    "อธิบายภาพรวมของสัญญาณที่ให้มา (เหรียญไหนเข้าเกณฑ์ถือ/ใกล้พลิก/หลายกลยุทธ์เห็นพ้อง) อย่างเป็นกลาง " +
+    "ชี้ทั้งโอกาสและความเสี่ยง ห้ามชี้นำซื้อ/ขายแบบฟันธง ปิดท้ายด้วยคำเตือนว่าไม่ใช่คำแนะนำการลงทุน";
+  const userPrompt =
+    "นี่คือสัญญาณ RSI/กลยุทธ์ล่าสุดของเหรียญที่ติดตาม ช่วยสรุปเป็นภาษาไทยอ่านง่าย:\n\n```json\n" +
+    JSON.stringify(summary).slice(0, 5000) +
+    "\n```\n\nจัดเป็นหัวข้อ: 1) ภาพรวมตอนนี้ 2) เหรียญที่น่าจับตา (เข้าเกณฑ์/ใกล้พลิก) 3) สิ่งที่ต้องระวัง 4) คำเตือน";
+  await streamClaude(res, {
+    system,
+    messages: [{ role: "user", content: userPrompt }],
+    maxTokens: 1400,
     effort: "medium",
   });
 });
