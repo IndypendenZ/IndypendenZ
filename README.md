@@ -30,7 +30,7 @@ cp .env.example .env
 npm start
 ```
 
-เปิดเบราว์เซอร์ไปที่ **http://localhost:3000**
+เปิดเบราว์เซอร์ไปที่ **http://localhost:8080**
 
 > 💡 ดูราคา/กราฟได้ทันทีโดยไม่ต้องมี API key — ส่วน **AI วิเคราะห์** ต้องตั้งค่า `ANTHROPIC_API_KEY` ก่อน
 
