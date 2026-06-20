@@ -404,4 +404,9 @@ app.listen(PORT, () => {
       ? "🤖 AI วิเคราะห์: เปิดใช้งาน (พบ ANTHROPIC_API_KEY)"
       : "⚠️  AI วิเคราะห์: ปิดอยู่ (ตั้งค่า ANTHROPIC_API_KEY เพื่อเปิดใช้)"
   );
+  console.log(
+    CG_KEY
+      ? "🪙 CoinGecko: ใช้ Demo key (ลิมิตสูง — หน้า RSI ใช้ได้เต็มที่)"
+      : "⚠️  CoinGecko: ไม่มี key (ลิมิตต่ำ — หน้า RSI อาจขึ้นบางเหรียญ ใส่ COINGECKO_API_KEY เพื่อแก้)"
+  );
 });
