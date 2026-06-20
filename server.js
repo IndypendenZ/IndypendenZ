@@ -13,11 +13,17 @@ const PORT = process.env.PORT || 8080;
 const COINGECKO = "https://api.coingecko.com/api/v3";
 const BINANCE = "https://api.binance.com";
 
-// เหรียญที่ติดตามในหน้า RSI Signal (เทียบกับเวอร์ชัน cointh)
+// เหรียญสำรอง (ใช้เมื่อดึง Top จาก Binance ไม่ได้)
 const SIGNAL_COINS = [
   "BTC", "ETH", "BNB", "SOL", "ADA", "DOGE", "AVAX", "LINK",
   "AXS", "SAND", "ZEC", "FET", "EGLD", "RUNE", "VET", "WLD", "ONE", "ENJ",
 ];
+
+// stablecoin / token ที่ไม่ควรเอามาคิด RSI
+const STABLE = new Set([
+  "USDC", "FDUSD", "TUSD", "DAI", "BUSD", "USDP", "GUSD", "PYUSD",
+  "USTC", "EUR", "EURI", "AEUR", "XUSD", "USD1",
+]);
 
 // สร้าง client เฉพาะเมื่อมี ANTHROPIC_API_KEY (อ่านจาก env อัตโนมัติ)
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
@@ -540,20 +546,48 @@ async function binanceCloses(symbol, pages = 3) {
   return batches.flat().map((x) => parseFloat(x[4]));
 }
 
+// ดึง Top N เหรียญตามสภาพคล่อง (quote volume) จาก Binance — เลือกแบบเป็นกลาง
+async function binanceTopSymbols(n = 50) {
+  const r = await fetch(`${BINANCE}/api/v3/ticker/24hr`, {
+    headers: { accept: "application/json" },
+  });
+  if (!r.ok) throw new Error("Binance ticker error");
+  const arr = await r.json();
+  return arr
+    .filter((t) => t.symbol.endsWith("USDT"))
+    .map((t) => ({ base: t.symbol.slice(0, -4), qv: parseFloat(t.quoteVolume) }))
+    .filter(
+      (t) =>
+        t.base &&
+        !STABLE.has(t.base) &&
+        !t.base.includes("USD") &&
+        !/(UP|DOWN|BULL|BEAR)$/.test(t.base)
+    )
+    .sort((a, b) => b.qv - a.qv)
+    .slice(0, n)
+    .map((t) => t.base);
+}
+
 app.get("/api/signal", async (_req, res) => {
   const cached = getCached("signal", 600_000); // แคช 10 นาที
   if (cached) return res.json(cached);
   try {
+    let symbols;
+    try {
+      symbols = await binanceTopSymbols(50);
+    } catch {
+      symbols = SIGNAL_COINS; // สำรอง
+    }
     const coins = [];
-    for (const c of SIGNAL_COINS) {
+    for (const base of symbols) {
       try {
-        const closes = await binanceCloses(c + "USDT");
+        const closes = await binanceCloses(base + "USDT", 2); // ~2000 แท่ง (≈5.5 ปี)
         if (closes.length < 60) continue;
-        coins.push(computeCoin(c, closes));
+        coins.push(computeCoin(base, closes));
       } catch {
         /* ข้ามเหรียญที่ดึงไม่ได้ */
       }
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 100));
     }
     if (!coins.length) throw new Error("ดึงข้อมูลจาก Binance ไม่ได้");
 
