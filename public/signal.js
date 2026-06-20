@@ -1,4 +1,15 @@
-const state = { coins: [], bySym: {}, ws: null };
+const state = {
+  coins: [],
+  bySym: {},
+  ws: null,
+  fav: new Set(JSON.parse(localStorage.getItem("sig_fav") || "[]")),
+  watch: new Set(JSON.parse(localStorage.getItem("sig_watch") || "[]")),
+};
+
+function saveSets() {
+  localStorage.setItem("sig_fav", JSON.stringify([...state.fav]));
+  localStorage.setItem("sig_watch", JSON.stringify([...state.watch]));
+}
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -82,8 +93,11 @@ function renderOrder(d) {
 }
 
 function renderCards(d) {
-  // เรียง: เหรียญที่เข้าเกณฑ์ (LONG) ขึ้นก่อน แล้วเรียงตาม RSI มาก→น้อย
+  // เรียง: ⭐ โปรดก่อน → เข้าเกณฑ์ (LONG) → RSI มาก→น้อย
   const ordered = [...d.coins].sort((a, b) => {
+    const af = state.fav.has(a.sym) ? 0 : 1;
+    const bf = state.fav.has(b.sym) ? 0 : 1;
+    if (af !== bf) return af - bf;
     const al = a.state === "LONG" ? 0 : 1;
     const bl = b.state === "LONG" ? 0 : 1;
     if (al !== bl) return al - bl;
@@ -92,12 +106,20 @@ function renderCards(d) {
   $("#signal-grid").innerHTML = ordered
     .map((c) => {
       const isLong = c.state === "LONG";
-      return `<div class="card ${isLong ? "is-long" : ""}" id="c-${c.sym}">
+      const isFav = state.fav.has(c.sym);
+      const isWatch = state.watch.has(c.sym);
+      const tv = `https://www.tradingview.com/chart/?symbol=BINANCE:${c.sym}USDT`;
+      return `<div class="card ${isLong ? "is-long" : ""} ${isFav ? "is-fav" : ""}" id="c-${c.sym}">
         ${isLong ? '<div class="long-tag">✓ เข้าเกณฑ์ถือ</div>' : ""}
         <div class="card-top">
           <span class="sym">${c.sym}</span>
           <span class="live">LIVE</span>
-          <span class="badge ${isLong ? "long" : ""}">${c.state}</span>
+          <span class="card-right">
+            <span class="badge ${isLong ? "long" : ""}">${c.state}</span>
+            <button class="act ${isFav ? "on" : ""}" data-fav="${c.sym}" title="รายการโปรด (ปักหมุดขึ้นบน)">⭐</button>
+            <button class="act ${isWatch ? "on" : ""}" data-watch="${c.sym}" title="เฝ้าดู">👀</button>
+            <a class="act" href="${tv}" target="_blank" rel="noopener" title="เปิดกราฟบน TradingView (Binance)">📈</a>
+          </span>
         </div>
         <div class="price-row">
           <span class="price">${fmtUSD(c.lastClose)}</span>
@@ -128,13 +150,18 @@ function renderCards(d) {
       </div>`;
     })
     .join("");
-  // เติมข้อความ flip เริ่มต้นจากค่าแท่งปิด
-  d.coins.forEach((c) => updateCard(c.sym, c.lastClose, null));
+  // เติมค่าจาก WebSocket ล่าสุด (ถ้ามี) ไม่งั้นใช้ราคาแท่งปิด
+  ordered.forEach((c) => {
+    const s = state.bySym[c.sym];
+    updateCard(c.sym, s?.lastPrice ?? c.lastClose, s?.lastChg ?? null);
+  });
 }
 
 function updateCard(sym, price, chg) {
   const s = state.bySym[sym];
   if (!s) return;
+  s.lastPrice = price;
+  if (chg != null) s.lastChg = chg;
   const card = $("#c-" + sym);
   if (!card) return;
   const rsi = liveRSI(s, price);
@@ -296,5 +323,22 @@ function connectWS() {
   };
   ws.onerror = () => ws.close();
 }
+
+// ปุ่ม ⭐ / 👀 บนการ์ด (event delegation)
+$("#signal-grid").addEventListener("click", (e) => {
+  const favBtn = e.target.closest("[data-fav]");
+  const watchBtn = e.target.closest("[data-watch]");
+  if (favBtn) {
+    const sym = favBtn.dataset.fav;
+    state.fav.has(sym) ? state.fav.delete(sym) : state.fav.add(sym);
+    saveSets();
+    renderCards({ coins: state.coins }); // re-sort (โปรดขึ้นบน)
+  } else if (watchBtn) {
+    const sym = watchBtn.dataset.watch;
+    state.watch.has(sym) ? state.watch.delete(sym) : state.watch.add(sym);
+    saveSets();
+    watchBtn.classList.toggle("on");
+  }
+});
 
 load();
