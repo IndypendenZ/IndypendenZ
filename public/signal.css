@@ -19,7 +19,7 @@ body {
   margin: 0;
   background: var(--cream);
   color: var(--ink);
-  font-family: "Noto Serif Thai", Georgia, serif;
+  font-family: "IBM Plex Sans Thai", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   line-height: 1.6;
 }
@@ -70,7 +70,7 @@ body {
   margin-bottom: 10px;
 }
 h1 {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-weight: 800;
   font-size: 58px;
   line-height: 1;
@@ -106,8 +106,8 @@ h1 {
   border: 1px solid var(--line-2);
   border-radius: 12px;
   padding: 12px 18px;
-  font-family: "Space Mono", monospace;
-  font-size: 13px;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 13.5px;
   color: var(--soft);
   margin-bottom: 22px;
   background: var(--paper);
@@ -132,14 +132,14 @@ h1 {
   margin-bottom: 30px;
 }
 .order-label {
-  font-family: "Space Mono", monospace;
+  font-family: "IBM Plex Sans Thai", sans-serif;
   font-size: 12px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   color: var(--soft);
   margin-bottom: 8px;
 }
 .order-box h2 {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-size: 30px;
   margin: 0;
 }
@@ -199,7 +199,7 @@ h1 {
   margin-bottom: 12px;
 }
 .sym {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-weight: 700;
   font-size: 24px;
 }
@@ -259,7 +259,7 @@ h1 {
   background: #f3e2df;
 }
 .rsi-big {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-weight: 800;
   font-size: 44px;
   line-height: 1;
@@ -342,7 +342,7 @@ h1 {
 
 /* ---- Track record ---- */
 .section-h {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-size: 30px;
   border-left: 4px solid var(--terra);
   padding-left: 14px;
@@ -375,14 +375,13 @@ h1 {
   padding: 16px 18px;
 }
 .stat .k {
-  font-family: "Space Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
 }
 .stat .v {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-size: 30px;
   font-weight: 700;
 }
@@ -412,9 +411,8 @@ h1 {
   min-width: 720px;
 }
 .bt-table th {
-  font-family: "Space Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.05em;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 12px;
   color: var(--muted);
   text-align: left;
   padding: 14px 14px;
@@ -434,7 +432,7 @@ h1 {
   font-weight: 700;
 }
 .bt-table .csym {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-weight: 700;
   font-size: 15px;
 }
@@ -467,7 +465,7 @@ h1 {
 }
 .info-box h3,
 .disc-box h3 {
-  font-family: "Playfair Display", serif;
+  font-family: "Playfair Display", "IBM Plex Sans Thai", serif;
   font-size: 21px;
   margin: 0 0 12px;
 }
@@ -498,7 +496,7 @@ h1 {
 }
 .foot {
   text-align: center;
-  font-family: "Space Mono", monospace;
+  font-family: "IBM Plex Sans Thai", sans-serif;
   font-size: 12px;
   color: var(--muted);
   border-top: 1px solid var(--line-2);
