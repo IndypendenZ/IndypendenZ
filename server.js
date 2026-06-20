@@ -716,8 +716,21 @@ async function fetchMvrv(asset) {
   const url =
     `https://community-api.coinmetrics.io/v4/timeseries/asset-metrics` +
     `?assets=${asset}&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=10000`;
-  const r = await fetch(url, { headers: { accept: "application/json" } });
-  if (!r.ok) throw new Error(`CoinMetrics ${r.status}`);
+  const r = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    },
+  });
+  if (!r.ok) {
+    let msg = `CoinMetrics ${r.status}`;
+    try {
+      const j = await r.json();
+      if (j?.error?.message) msg += ": " + j.error.message;
+    } catch {}
+    throw new Error(msg);
+  }
   const j = await r.json();
   const rows = (j.data || [])
     .map((d) => ({
