@@ -565,7 +565,7 @@ async function binanceTopSymbols(n = 50) {
     )
     .sort((a, b) => b.qv - a.qv)
     .slice(0, n)
-    .map((t) => t.base);
+    .map((t) => ({ sym: t.base, vol: t.qv }));
 }
 
 app.get("/api/signal", async (_req, res) => {
@@ -576,14 +576,14 @@ app.get("/api/signal", async (_req, res) => {
     try {
       symbols = await binanceTopSymbols(50);
     } catch {
-      symbols = SIGNAL_COINS; // สำรอง
+      symbols = SIGNAL_COINS.map((s) => ({ sym: s, vol: 0 })); // สำรอง
     }
     const coins = [];
-    for (const base of symbols) {
+    for (const { sym: base, vol } of symbols) {
       try {
         const closes = await binanceCloses(base + "USDT", 2); // ~2000 แท่ง (≈5.5 ปี)
         if (closes.length < 60) continue;
-        coins.push(computeCoin(base, closes));
+        coins.push({ ...computeCoin(base, closes), vol });
       } catch {
         /* ข้ามเหรียญที่ดึงไม่ได้ */
       }

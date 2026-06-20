@@ -4,6 +4,7 @@ const state = {
   ws: null,
   fav: new Set(JSON.parse(localStorage.getItem("sig_fav") || "[]")),
   watch: new Set(JSON.parse(localStorage.getItem("sig_watch") || "[]")),
+  sortBy: localStorage.getItem("sig_sort") || "signal",
 };
 
 function saveSets() {
@@ -58,6 +59,12 @@ async function load() {
     const data = await r.json();
     state.coins = data.coins;
     data.coins.forEach((c) => (state.bySym[c.sym] = { ...c, live: c.lastClose, chg: null }));
+    // จัดอันดับ volume (รายชื่อมาจาก Binance ที่เรียงตาม volume อยู่แล้ว)
+    [...data.coins]
+      .sort((a, b) => (b.vol ?? 0) - (a.vol ?? 0))
+      .forEach((c, i) => {
+        if (state.bySym[c.sym]) state.bySym[c.sym].volRank = i + 1;
+      });
     renderStatus(data);
     renderOrder(data);
     renderCards(data);
@@ -92,16 +99,20 @@ function renderOrder(d) {
   }
 }
 
+const consensus = (c) => Object.values(c.signals).filter((s) => s === "LONG").length;
+
 function renderCards(d) {
-  // เรียง: ⭐ โปรดก่อน → เข้าเกณฑ์ (LONG) → RSI มาก→น้อย
+  // ⭐ โปรดก่อนเสมอ แล้วเรียงตามตัวเลือก (สัญญาณ / RSI / Volume)
   const ordered = [...d.coins].sort((a, b) => {
     const af = state.fav.has(a.sym) ? 0 : 1;
     const bf = state.fav.has(b.sym) ? 0 : 1;
     if (af !== bf) return af - bf;
-    const al = a.state === "LONG" ? 0 : 1;
-    const bl = b.state === "LONG" ? 0 : 1;
-    if (al !== bl) return al - bl;
-    return (b.rsiLast ?? 0) - (a.rsiLast ?? 0);
+    if (state.sortBy === "rsi") return (b.rsiLast ?? 0) - (a.rsiLast ?? 0);
+    if (state.sortBy === "vol") return (b.vol ?? 0) - (a.vol ?? 0);
+    // signal: เข้าเกณฑ์มากสุดก่อน → ตามด้วย volume
+    const cd = consensus(b) - consensus(a);
+    if (cd !== 0) return cd;
+    return (b.vol ?? 0) - (a.vol ?? 0);
   });
   $("#signal-grid").innerHTML = ordered
     .map((c) => {
@@ -125,6 +136,11 @@ function renderCards(d) {
           <span class="price">${fmtUSD(c.lastClose)}</span>
           <span class="chg" data-chg>—</span>
         </div>
+        ${
+          c.vol
+            ? `<div class="meta">Vol ${fmtBig(c.vol)} · อันดับ #${state.bySym[c.sym]?.volRank ?? "—"}</div>`
+            : ""
+        }
         <div class="rsi-big ${rsiClass(c.rsiLast)}" data-rsi>${c.rsiLast == null ? "—" : c.rsiLast.toFixed(1)}
           <small>RSI 14 · สด</small>
         </div>
@@ -340,5 +356,20 @@ $("#signal-grid").addEventListener("click", (e) => {
     watchBtn.classList.toggle("on");
   }
 });
+
+// ปุ่มสลับการเรียง
+document.querySelectorAll("#sort-seg button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#sort-seg button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    state.sortBy = b.dataset.sort;
+    localStorage.setItem("sig_sort", state.sortBy);
+    if (state.coins.length) renderCards({ coins: state.coins });
+  })
+);
+// ตั้งปุ่ม active ให้ตรงกับค่าที่บันทึกไว้
+document.querySelectorAll("#sort-seg button").forEach((b) =>
+  b.classList.toggle("active", b.dataset.sort === state.sortBy)
+);
 
 load();
