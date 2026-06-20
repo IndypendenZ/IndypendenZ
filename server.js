@@ -337,6 +337,192 @@ function backtest(closes, fee = 0.0004) {
   };
 }
 
+// ===== อินดิเคเตอร์เพิ่มเติม =====
+function sma(v, p) {
+  const o = new Array(v.length).fill(null);
+  let s = 0;
+  for (let i = 0; i < v.length; i++) {
+    s += v[i];
+    if (i >= p) s -= v[i - p];
+    if (i >= p - 1) o[i] = s / p;
+  }
+  return o;
+}
+function ema(v, p) {
+  const o = new Array(v.length).fill(null);
+  if (v.length < p) return o;
+  const k = 2 / (p + 1);
+  let s = 0;
+  for (let i = 0; i < p; i++) s += v[i];
+  let prev = s / p;
+  o[p - 1] = prev;
+  for (let i = p; i < v.length; i++) {
+    prev = v[i] * k + prev * (1 - k);
+    o[i] = prev;
+  }
+  return o;
+}
+function macdArrays(closes) {
+  const f = ema(closes, 12);
+  const s = ema(closes, 26);
+  const line = closes.map((_, i) =>
+    f[i] != null && s[i] != null ? f[i] - s[i] : null
+  );
+  const sig = new Array(closes.length).fill(null);
+  const k = 2 / (9 + 1);
+  let prev = null;
+  let cnt = 0;
+  let sum = 0;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] == null) continue;
+    if (cnt < 9) {
+      sum += line[i];
+      cnt++;
+      if (cnt === 9) {
+        prev = sum / 9;
+        sig[i] = prev;
+      }
+    } else {
+      prev = line[i] * k + prev * (1 - k);
+      sig[i] = prev;
+    }
+  }
+  return { line, sig };
+}
+function rollMax(v, p) {
+  const o = new Array(v.length).fill(null);
+  for (let i = p; i < v.length; i++) {
+    let m = -Infinity;
+    for (let j = i - p; j < i; j++) m = Math.max(m, v[j]);
+    o[i] = m;
+  }
+  return o;
+}
+function rollMin(v, p) {
+  const o = new Array(v.length).fill(null);
+  for (let i = p; i < v.length; i++) {
+    let m = Infinity;
+    for (let j = i - p; j < i; j++) m = Math.min(m, v[j]);
+    o[i] = m;
+  }
+  return o;
+}
+
+// backtest แบบทั่วไป: stateAt(i) คืน "LONG"/"CASH"/null(คงสถานะ)
+function runStrat(closes, stateAt, fee = 0.0004) {
+  let state = "CASH";
+  let eq = 1;
+  let peak = 1;
+  let mdd = 0;
+  let trades = 0;
+  const rets = [];
+  for (let i = 0; i < closes.length - 1; i++) {
+    const w = stateAt(i);
+    if (w && w !== state) {
+      state = w;
+      trades++;
+      eq *= 1 - fee;
+    }
+    const r = closes[i + 1] / closes[i] - 1;
+    if (state === "LONG") {
+      eq *= 1 + r;
+      rets.push(r);
+    } else rets.push(0);
+    peak = Math.max(peak, eq);
+    mdd = Math.min(mdd, (eq - peak) / peak);
+  }
+  const w = stateAt(closes.length - 1);
+  if (w) state = w;
+  const years = (closes.length - 1) / 365.25;
+  const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
+  const sd = Math.sqrt(
+    rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length || 1)
+  );
+  return {
+    final: eq,
+    cagr: Math.pow(eq, 1 / years) - 1,
+    sharpe: sd > 0 ? (mean / sd) * Math.sqrt(365) : 0,
+    mdd,
+    trades,
+    state,
+    years,
+  };
+}
+
+// คำนวณทุกกลยุทธ์ของเหรียญเดียว
+function computeCoin(sym, closes) {
+  const { rsi, avgGain, avgLoss } = rsiSeries(closes, 14);
+  const e200 = ema(closes, 200);
+  const s50 = sma(closes, 50);
+  const s200 = sma(closes, 200);
+  const { line, sig } = macdArrays(closes);
+  const hi20 = rollMax(closes, 20);
+  const lo10 = rollMin(closes, 10);
+
+  const stRsi = (i) =>
+    rsi[i] == null ? null : rsi[i] > 55 ? "LONG" : rsi[i] < 45 ? "CASH" : null;
+  const stRsiEma = (i) => {
+    if (rsi[i] == null || e200[i] == null) return null;
+    if (rsi[i] > 55 && closes[i] > e200[i]) return "LONG";
+    if (rsi[i] < 45 || closes[i] < e200[i]) return "CASH";
+    return null;
+  };
+  const stMa = (i) =>
+    s50[i] == null || s200[i] == null ? null : s50[i] > s200[i] ? "LONG" : "CASH";
+  const stMacd = (i) =>
+    line[i] == null || sig[i] == null ? null : line[i] > sig[i] ? "LONG" : "CASH";
+  const stDon = (i) => {
+    if (hi20[i] == null || lo10[i] == null) return null;
+    if (closes[i] >= hi20[i]) return "LONG";
+    if (closes[i] <= lo10[i]) return "CASH";
+    return null;
+  };
+
+  const strat = {
+    rsi: runStrat(closes, stRsi),
+    rsiEma: runStrat(closes, stRsiEma),
+    maCross: runStrat(closes, stMa),
+    macd: runStrat(closes, stMacd),
+    donchian: runStrat(closes, stDon),
+    bh: runStrat(closes, () => "LONG"),
+  };
+
+  return {
+    sym,
+    lastClose: closes[closes.length - 1],
+    rsiLast: rsi[rsi.length - 1],
+    avgGain,
+    avgLoss,
+    signals: {
+      rsi: strat.rsi.state,
+      rsiEma: strat.rsiEma.state,
+      maCross: strat.maCross.state,
+      macd: strat.macd.state,
+      donchian: strat.donchian.state,
+    },
+    // metric ของกลยุทธ์ RSI (ใช้กับตารางเดิม + การ์ด)
+    state: strat.rsi.state,
+    finalRSI: strat.rsi.final,
+    finalBH: strat.bh.final,
+    cagr: strat.rsi.cagr,
+    cagrBH: strat.bh.cagr,
+    sharpe: strat.rsi.sharpe,
+    mdd: strat.rsi.mdd,
+    trades: strat.rsi.trades,
+    years: strat.rsi.years,
+    strat, // ลบออกก่อนส่ง
+  };
+}
+
+const STRAT_DEFS = [
+  ["rsi", "RSI 55/45"],
+  ["rsiEma", "RSI + กรองเทรนด์ EMA200"],
+  ["maCross", "MA Cross 50/200"],
+  ["macd", "MACD (12/26/9)"],
+  ["donchian", "Donchian 20/10"],
+  ["bh", "Buy & Hold"],
+];
+
 // ดึงราคาปิดรายวันจาก Binance (แบ่งหน้าได้สูงสุด ~3000 แท่ง)
 async function binanceCloses(symbol, pages = 3) {
   let endTime = Date.now();
@@ -363,21 +549,36 @@ app.get("/api/signal", async (_req, res) => {
       try {
         const closes = await binanceCloses(c + "USDT");
         if (closes.length < 60) continue;
-        coins.push({ sym: c, ...backtest(closes) });
+        coins.push(computeCoin(c, closes));
       } catch {
         /* ข้ามเหรียญที่ดึงไม่ได้ */
       }
       await new Promise((r) => setTimeout(r, 120));
     }
     if (!coins.length) throw new Error("ดึงข้อมูลจาก Binance ไม่ได้");
-    const totalRSI = coins.reduce((a, b) => a + b.finalRSI * 10000, 0);
-    const totalBH = coins.reduce((a, b) => a + b.finalBH * 10000, 0);
+
+    // เปรียบเทียบผลรวมของแต่ละกลยุทธ์ (สมมติ $10k/เหรียญ)
+    const strategies = STRAT_DEFS.map(([key, label]) => {
+      const arr = coins.map((c) => c.strat[key]);
+      return {
+        key,
+        label,
+        total: arr.reduce((a, b) => a + b.final * 10000, 0),
+        avgCagr: arr.reduce((a, b) => a + b.cagr, 0) / arr.length,
+        avgSharpe: arr.reduce((a, b) => a + b.sharpe, 0) / arr.length,
+        worstMdd: Math.min(...arr.map((b) => b.mdd)),
+        avgTrades: arr.reduce((a, b) => a + b.trades, 0) / arr.length,
+      };
+    });
+
+    const cleanCoins = coins.map(({ strat, ...rest }) => rest);
     const data = {
-      coins,
+      coins: cleanCoins,
+      strategies,
       portfolio: {
         n: coins.length,
-        totalRSI,
-        totalBH,
+        totalRSI: coins.reduce((a, b) => a + b.finalRSI * 10000, 0),
+        totalBH: coins.reduce((a, b) => a + b.finalBH * 10000, 0),
         invested: coins.length * 10000,
         avgCagr: coins.reduce((a, b) => a + b.cagr, 0) / coins.length,
         avgSharpe: coins.reduce((a, b) => a + b.sharpe, 0) / coins.length,

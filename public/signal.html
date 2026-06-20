@@ -80,6 +80,37 @@
         </table>
       </div>
 
+      <!-- เปรียบเทียบกลยุทธ์ -->
+      <h2 class="section-h">เปรียบเทียบกลยุทธ์ · Strategy Comparison</h2>
+      <p class="bt-intro">
+        รันแต่ละเกณฑ์บนเหรียญชุดเดียวกัน (สมมติ $10k/เหรียญ ค่าธรรมเนียม 0.04%/ครั้ง)
+        แล้วดูว่าตัวไหนให้ผลรวมดีกว่ากัน — ตัวเลขยิ่งสูง (CAGR/Sharpe) และ MDD
+        ยิ่งน้อย (ติดลบน้อย) ยิ่งดี · <em>คำนวณสดจากราคา Binance</em>
+      </p>
+      <div class="table-wrap">
+        <table class="bt-table">
+          <thead>
+            <tr>
+              <th>กลยุทธ์</th>
+              <th class="num">รวม $10K/เหรียญ →</th>
+              <th class="num">CAGR เฉลี่ย</th>
+              <th class="num">Sharpe เฉลี่ย</th>
+              <th class="num">MDD แย่สุด</th>
+              <th class="num">เทรดเฉลี่ย</th>
+            </tr>
+          </thead>
+          <tbody id="strat-body">
+            <tr><td colspan="6" class="loading">กำลังคำนวณ…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="bt-intro" style="margin-top:-18px">
+        💡 <b>RSI + กรองเทรนด์ EMA200</b> = เข้า LONG เฉพาะตอน RSI&gt;55
+        <em>และ</em> ราคาอยู่เหนือเส้น EMA200 (ตัดสัญญาณหลอกช่วงตลาดหมี) ·
+        <b>MA Cross</b> = SMA50 ตัด SMA200 · <b>MACD</b> = เส้น MACD ตัด signal ·
+        <b>Donchian</b> = ทำ new high 20 วันเข้า / หลุด low 10 วันออก
+      </p>
+
       <!-- กฎ + การคัดเลือก -->
       <div class="two-col">
         <div class="info-box">

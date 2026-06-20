@@ -24,6 +24,10 @@ function rsiClass(v) {
   return "rsi-neu";
 }
 
+function sigChip(label, st) {
+  return `<span class="sig ${st === "LONG" ? "on" : ""}" title="${st === "LONG" ? "เข้าเกณฑ์ถือ" : "ถือเงินสด"}">${label}</span>`;
+}
+
 // in-progress RSI หนึ่งสเต็ปจากแท่งปิดล่าสุด
 function liveRSI(s, price) {
   const d = price - s.lastClose;
@@ -47,6 +51,7 @@ async function load() {
     renderOrder(data);
     renderCards(data);
     renderStats(data);
+    renderStrategies(data);
     renderTable(data);
     connectWS();
   } catch (e) {
@@ -106,6 +111,16 @@ function renderCards(d) {
           <span class="mark live" data-mark style="left:${c.rsiLast ?? 50}%"></span>
         </div>
         <div class="gauge-scale"><span>0</span><span>45</span><span>55</span><span>100</span></div>
+        <div class="sig-row">
+          <span class="sig-lab">สัญญาณ ${
+            Object.values(c.signals).filter((s) => s === "LONG").length
+          }/5</span>
+          ${sigChip("RSI", c.signals.rsi)}
+          ${sigChip("+EMA", c.signals.rsiEma)}
+          ${sigChip("MA✕", c.signals.maCross)}
+          ${sigChip("MACD", c.signals.macd)}
+          ${sigChip("Donch", c.signals.donchian)}
+        </div>
         <div class="card-foot">
           <div data-foot></div>
           <div class="flip" data-flip></div>
@@ -184,6 +199,28 @@ function renderStats(d) {
       <div class="v red">${(p.worstMdd * 100).toFixed(0)}%</div>
       <div class="s">ช่วงดิ่งหนักสุด (เหรียญแย่สุด)</div>
     </div>`;
+}
+
+function renderStrategies(d) {
+  if (!d.strategies) return;
+  // เรียงตามผลรวมมาก→น้อย หาตัวที่ดีที่สุด (ไม่นับ Buy & Hold)
+  const best = [...d.strategies]
+    .filter((s) => s.key !== "bh")
+    .sort((a, b) => b.total - a.total)[0];
+  $("#strat-body").innerHTML = d.strategies
+    .map((s) => {
+      const isBest = best && s.key === best.key;
+      const isBH = s.key === "bh";
+      return `<tr class="${isBest ? "total" : ""}">
+        <td class="csym" style="font-size:14px">${isBest ? "🏆 " : ""}${s.label}${isBH ? " (ซื้อถือยาว)" : ""}</td>
+        <td class="num ${isBH ? "" : "g"}">${fmtBig(s.total)}</td>
+        <td class="num ${s.avgCagr >= 0 ? "g" : "r"}">${(s.avgCagr * 100).toFixed(0)}%</td>
+        <td class="num">${s.avgSharpe.toFixed(2)}</td>
+        <td class="num r">${(s.worstMdd * 100).toFixed(0)}%</td>
+        <td class="num">${s.avgTrades.toFixed(0)}</td>
+      </tr>`;
+    })
+    .join("");
 }
 
 function renderTable(d) {

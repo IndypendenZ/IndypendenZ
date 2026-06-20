@@ -10,6 +10,7 @@
 - 🌍 **ภาพรวมตลาด** — มูลค่าตลาดรวม, BTC Dominance, ดัชนี Fear & Greed, เหรียญมาแรง (Trending)
 - 📐 **RSI Scanner** — คำนวณ RSI(14) ของเหรียญ Top 25 เลือกช่วงเวลา 5นาที/1ชม/1วัน + กรอง Oversold/Overbought
 - 🔔 **RSI Signal + Backtest** (หน้า `/signal.html`) — กลยุทธ์ RSI 55/45 long-only, ราคา+RSI สดผ่าน Binance WebSocket, backtest เทียบ Buy&Hold (CAGR/Sharpe/MDD) · ใช้ข้อมูล Binance ไม่ต้องมี key
+- 🧪 **เปรียบเทียบ 5 กลยุทธ์** — RSI 55/45, RSI+กรองเทรนด์ EMA200, MA Cross 50/200, MACD, Donchian 20/10 + แถบสัญญาณรวมต่อเหรียญ
 - 🤖 **วิเคราะห์ด้วย AI (Claude)** — สรุปข้อมูลรายเหรียญ + วิเคราะห์ภาพรวมตลาดทั้งหมด
 - 💬 **แชท AI** — ถาม-ตอบเรื่องคริปโตได้ทุกอย่าง (อ้างอิงราคาปัจจุบันได้)
 

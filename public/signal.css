@@ -319,6 +319,32 @@ h1 {
   font-size: 10px;
   color: var(--muted);
 }
+.sig-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 12px;
+}
+.sig-lab {
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 2px;
+}
+.sig {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #ece6da;
+  color: var(--muted);
+}
+.sig.on {
+  background: var(--green);
+  color: #fff;
+}
+
 .card-foot {
   margin-top: 12px;
   padding-top: 12px;
