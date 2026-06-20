@@ -55,6 +55,23 @@ node --env-file=.env server.js
 
 ---
 
+## เจอ error "CoinGecko 429 / Rate Limit" ทำยังไง
+
+CoinGecko แบบฟรีไม่ใส่ key มีลิมิตต่ำมาก (โดยเฉพาะหน้า RSI ที่ดึงหลายเหรียญ)
+แก้ด้วยการขอ **Demo API key ฟรี** (ลิมิต 30 ครั้ง/นาที):
+
+1. สมัคร/เข้าสู่ระบบ https://www.coingecko.com/en/developers/dashboard
+2. กด **+ Add New Key** → คัดลอกค่า key
+3. ใส่ในไฟล์ `.env`:
+   ```
+   COINGECKO_API_KEY=CG-xxxxxxxxxxxx
+   ```
+4. รันใหม่ (`npm start`)
+
+> ระบบมี backoff + แคช + ใช้ข้อมูลเก่าชั่วคราวเวลาโดนลิมิตอยู่แล้ว แต่ถ้าใส่ key จะลื่นกว่ามาก
+
+---
+
 ## ขอ Claude API key ที่ไหน
 
 1. ไปที่ https://console.anthropic.com/

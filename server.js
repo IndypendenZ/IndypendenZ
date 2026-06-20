@@ -15,6 +15,9 @@ const COINGECKO = "https://api.coingecko.com/api/v3";
 // สร้าง client เฉพาะเมื่อมี ANTHROPIC_API_KEY (อ่านจาก env อัตโนมัติ)
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
+// CoinGecko Demo API key (ไม่บังคับ แต่ใส่แล้วลิมิตสูงขึ้นมาก — แนะนำสำหรับหน้า RSI)
+const CG_KEY = process.env.COINGECKO_API_KEY || "";
+
 // แคชราคาในหน่วยความจำสั้นๆ เพื่อกัน rate limit ของ CoinGecko (ฟรี ~10-30 req/min)
 const cache = new Map();
 function getCached(key, ttlMs) {
@@ -25,21 +28,33 @@ function getCached(key, ttlMs) {
 function setCached(key, data) {
   cache.set(key, { t: Date.now(), data });
 }
+// คืนข้อมูลเก่าในแคชแม้หมดอายุแล้ว (ใช้เป็น fallback เวลาโดน rate limit)
+function getStale(key) {
+  const hit = cache.get(key);
+  return hit ? hit.data : null;
+}
 
-async function cgFetch(url) {
-  const r = await fetch(url, { headers: { accept: "application/json" } });
-  if (!r.ok) {
+async function cgFetch(url, { retries = 2 } = {}) {
+  const headers = { accept: "application/json" };
+  if (CG_KEY) headers["x-cg-demo-api-key"] = CG_KEY;
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch(url, { headers });
+    if (r.ok) return r.json();
+    // โดน rate limit → รอแล้วลองใหม่ (backoff)
+    if (r.status === 429 && attempt < retries) {
+      await new Promise((res) => setTimeout(res, 2000 * (attempt + 1)));
+      continue;
+    }
     const text = await r.text().catch(() => "");
     throw new Error(`CoinGecko ${r.status}: ${text.slice(0, 200)}`);
   }
-  return r.json();
 }
 
 // ---- ดึงรายการเหรียญ + ราคา (ตลาดรวม) ----
 app.get("/api/markets", async (req, res) => {
   const vs = (req.query.vs || "usd").toLowerCase();
   const key = `markets:${vs}`;
-  const cached = getCached(key, 30_000); // แคช 30 วิ
+  const cached = getCached(key, 45_000); // แคช 45 วิ
   if (cached) return res.json(cached);
 
   const url =
@@ -51,6 +66,8 @@ app.get("/api/markets", async (req, res) => {
     setCached(key, data);
     res.json(data);
   } catch (e) {
+    const stale = getStale(key);
+    if (stale) return res.json(stale);
     res.status(502).json({ error: e.message });
   }
 });
@@ -61,7 +78,7 @@ app.get("/api/coin/:id/chart", async (req, res) => {
   const days = String(req.query.days || "7");
   const id = encodeURIComponent(req.params.id);
   const key = `chart:${id}:${vs}:${days}`;
-  const cached = getCached(key, 60_000); // แคช 60 วิ
+  const cached = getCached(key, 120_000); // แคช 2 นาที
   if (cached) return res.json(cached);
 
   const url = `${COINGECKO}/coins/${id}/market_chart?vs_currency=${encodeURIComponent(vs)}&days=${encodeURIComponent(days)}`;
@@ -70,6 +87,8 @@ app.get("/api/coin/:id/chart", async (req, res) => {
     setCached(key, data);
     res.json(data);
   } catch (e) {
+    const stale = getStale(key);
+    if (stale) return res.json(stale);
     res.status(502).json({ error: e.message });
   }
 });
@@ -104,13 +123,15 @@ app.get("/api/global", async (req, res) => {
     setCached(key, data);
     res.json(data);
   } catch (e) {
+    const stale = getStale(key);
+    if (stale) return res.json(stale);
     res.status(502).json({ error: e.message });
   }
 });
 
 // ---- เหรียญมาแรง (Trending) ----
 app.get("/api/trending", async (_req, res) => {
-  const cached = getCached("trending", 120_000);
+  const cached = getCached("trending", 300_000);
   if (cached) return res.json(cached);
   try {
     const t = await cgFetch(`${COINGECKO}/search/trending`);
@@ -125,6 +146,8 @@ app.get("/api/trending", async (_req, res) => {
     setCached("trending", coins);
     res.json(coins);
   } catch (e) {
+    const stale = getStale("trending");
+    if (stale) return res.json(stale);
     res.status(502).json({ error: e.message });
   }
 });
@@ -208,11 +231,13 @@ app.get("/api/rsi", async (req, res) => {
         });
       }
       // หน่วงเล็กน้อยกัน rate limit ของ CoinGecko ฟรี
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 600));
     }
     setCached(key, out);
     res.json(out);
   } catch (e) {
+    const stale = getStale(key);
+    if (stale) return res.json(stale);
     res.status(502).json({ error: e.message });
   }
 });

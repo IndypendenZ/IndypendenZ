@@ -654,10 +654,12 @@ async function init() {
   await loadMarkets();
   loadGlobal();
   loadTrending();
-  // รีเฟรชอัตโนมัติทุก 60 วิ
+  // รีเฟรชอัตโนมัติทุก 2 นาที (ลดการเรียก API กัน rate limit)
   setInterval(() => {
-    loadMarkets();
-    loadGlobal();
-  }, 60_000);
+    if (state.tab !== "rsi") {
+      loadMarkets();
+      loadGlobal();
+    }
+  }, 120_000);
 }
 init();
