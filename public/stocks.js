@@ -106,7 +106,7 @@ async function load() {
     renderFilterNote();
     renderBacktest();
   } catch (e) {
-    $("#statusbar").innerHTML = `<span class="r">โหลดไม่สำเร็จ: ${e.message}</span> — หน้านี้ต้องเข้าถึง stooq.com (ปกติบนเครื่องตัวเองได้)`;
+    $("#statusbar").innerHTML = `<span class="r">โหลดไม่สำเร็จ: ${e.message}</span> — หน้านี้ดึงราคาจาก Yahoo Finance / Stooq (ปกติบนเครื่องตัวเองได้)`;
   }
 }
 

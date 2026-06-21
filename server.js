@@ -851,10 +851,39 @@ app.get("/api/signal", async (_req, res) => {
   }
 });
 
-// ===== หุ้น US: ดึงราคาปิดรายวันจาก Stooq (ฟรี ไม่ต้องมี key) =====
+// ===== หุ้น US: ดึงราคาปิดรายวัน (ฟรี ไม่ต้องมี key) =====
 const STOCK_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-// Stooq คืน CSV: Date,Open,High,Low,Close,Volume (เรียงเก่า→ใหม่)
+
+// แหล่งหลัก: Yahoo Finance chart API (JSON, ประวัติยาว, ใช้ราคาปรับ split/ปันผล)
+async function yahooDaily(ticker) {
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
+    `?range=10y&interval=1d`;
+  const r = await fetch(url, {
+    headers: { "user-agent": STOCK_UA, accept: "application/json" },
+  });
+  if (!r.ok) throw new Error(`Yahoo ${ticker} ${r.status}`);
+  const j = await r.json();
+  const result = j?.chart?.result?.[0];
+  if (!result || !Array.isArray(result.timestamp))
+    throw new Error(`Yahoo ${ticker}: ไม่มีข้อมูล`);
+  const ts = result.timestamp;
+  const closeArr = result.indicators?.quote?.[0]?.close || [];
+  const adjArr = result.indicators?.adjclose?.[0]?.adjclose || null; // ปรับ split/ปันผล
+  const closes = [];
+  const times = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = adjArr && adjArr[i] != null ? adjArr[i] : closeArr[i];
+    if (c == null || !isFinite(c) || c <= 0) continue;
+    times.push(new Date(ts[i] * 1000).toISOString().slice(0, 10));
+    closes.push(c);
+  }
+  if (closes.length < 60) throw new Error(`Yahoo ${ticker}: ข้อมูลน้อยเกินไป`);
+  return { closes, times };
+}
+
+// แหล่งสำรอง: Stooq CSV — Date,Open,High,Low,Close,Volume (เรียงเก่า→ใหม่)
 async function stooqDaily(ticker) {
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(
     ticker.toLowerCase()
@@ -864,7 +893,7 @@ async function stooqDaily(ticker) {
   const text = await r.text();
   const lines = text.trim().split("\n");
   if (lines.length < 2 || !/^date/i.test(lines[0]))
-    throw new Error(`Stooq ${ticker}: ไม่มีข้อมูล`);
+    throw new Error(`Stooq ${ticker}: ${text.slice(0, 60)}`);
   const closes = [];
   const times = [];
   for (let i = 1; i < lines.length; i++) {
@@ -877,14 +906,28 @@ async function stooqDaily(ticker) {
   return { closes, times };
 }
 
+// ดึงราคาหุ้น: ลอง Yahoo ก่อน ถ้าไม่ได้ค่อย Stooq
+async function stockDaily(ticker) {
+  try {
+    return await yahooDaily(ticker);
+  } catch (e1) {
+    try {
+      return await stooqDaily(ticker);
+    } catch (e2) {
+      throw new Error(`${e1.message} | ${e2.message}`);
+    }
+  }
+}
+
 app.get("/api/stock-signal", async (_req, res) => {
   const cached = getCached("stock-signal", 1800_000); // แคช 30 นาที (หุ้นอัปเดตวันละครั้งพอ)
   if (cached) return res.json(cached);
   try {
     const stocks = [];
+    let lastErr = null;
     for (const ticker of STOCK_TICKERS) {
       try {
-        const { closes, times } = await stooqDaily(ticker);
+        const { closes, times } = await stockDaily(ticker);
         if (closes.length < 60) continue;
         const s = computeCoin(ticker, closes, times, STOCK_PPY);
         s.pass = s.years >= STOCK_MIN_YEARS && s.annVol <= STOCK_MAX_VOL;
@@ -892,12 +935,13 @@ app.get("/api/stock-signal", async (_req, res) => {
           closes.length > 1 ? closes[closes.length - 1] / closes[closes.length - 2] - 1 : null;
         s.lastDate = times[times.length - 1];
         stocks.push(s);
-      } catch {
-        /* ข้ามหุ้นที่ดึงไม่ได้ */
+      } catch (err) {
+        lastErr = err.message; // เก็บไว้บอกสาเหตุถ้าพังทั้งหมด
       }
       await new Promise((r) => setTimeout(r, 120)); // หน่วงเล็กน้อยกันโดนบล็อก
     }
-    if (!stocks.length) throw new Error("ดึงข้อมูลหุ้นจาก Stooq ไม่ได้");
+    if (!stocks.length)
+      throw new Error("ดึงข้อมูลหุ้นไม่ได้ (Yahoo/Stooq)" + (lastErr ? " · " + lastErr : ""));
 
     const passing = stocks.filter((c) => c.pass);
     const base = passing.length ? passing : stocks;
