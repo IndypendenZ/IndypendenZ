@@ -68,6 +68,12 @@ function entryRisk(pct) {
     text: "⚠️ ราคาวิ่งไกลจากจุดเข้ามากแล้ว — เข้าตอนนี้ไล่ราคาสูง เสี่ยงกว่าคนที่ได้สัญญาณแรก",
   };
 }
+function btLineHTML(c) {
+  const t = c.bt;
+  if (!t || !t.n) return `<div class="bt-line muted">📊 Backtest: ยังไม่มีเทรดที่จบ</div>`;
+  const wr = (t.wins / t.n) * 100;
+  return `<div class="bt-line">📊 Backtest ${t.years.toFixed(1)} ปี · ชนะ <b>${t.wins}/${t.n}</b> (${wr.toFixed(0)}%) · เฉลี่ย <b class="${t.avgRet >= 0 ? "pos" : "neg"}">${signPct(t.avgRet)}</b>/เทรด · รวม <b class="${t.totalRet >= 0 ? "pos" : "neg"}">${signPct(t.totalRet)}</b></div>`;
+}
 function entryBoxHTML(c) {
   const e = c.entry;
   const r = entryRisk(e.pctSinceEntry);
@@ -183,26 +189,6 @@ function renderBacktest2y() {
   $("#bt2y-head").innerHTML = n
     ? `โอกาสกำไร <b class="${wrCls}">${wr.toFixed(0)}%</b> · จาก <b>${n}</b> เทรด (${wins} ชนะ) · กำไรเฉลี่ย <b class="${avg >= 0 ? "g" : "r"}">${avg >= 0 ? "+" : ""}${avg.toFixed(1)}%</b>/เทรด · ประวัติสูงสุด ~${maxYears.toFixed(1)} ปี`
     : "ยังไม่มีเทรดที่จบ";
-
-  const rows = list
-    .filter((c) => c.bt && c.bt.n > 0)
-    .sort((a, b) => b.bt.totalRet - a.bt.totalRet);
-  $("#bt2y-body").innerHTML = rows.length
-    ? rows
-        .map((c) => {
-          const t = c.bt;
-          const w = (t.wins / t.n) * 100;
-          return `<tr>
-            <td class="csym">${c.sym}</td>
-            <td class="num">${t.n}</td>
-            <td class="num">${t.wins}</td>
-            <td class="num ${w >= 50 ? "g" : "r"}">${w.toFixed(0)}%</td>
-            <td class="num ${t.avgRet >= 0 ? "g" : "r"}">${signPct(t.avgRet)}</td>
-            <td class="num ${t.totalRet >= 0 ? "g" : "r"}">${signPct(t.totalRet)}</td>
-          </tr>`;
-        })
-        .join("")
-    : `<tr><td colspan="6" class="loading">ไม่มีเทรด</td></tr>`;
 }
 
 const consensus = (c) => Object.values(c.signals).filter((s) => s === "LONG").length;
@@ -277,6 +263,7 @@ function renderCards() {
           <div class="flip" data-flip></div>
         </div>
         ${isLong && c.entry ? entryBoxHTML(c) : ""}
+        ${btLineHTML(c)}
       </div>`;
     })
     .join("");

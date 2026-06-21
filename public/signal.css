@@ -200,9 +200,36 @@ h1 {
 /* ---- Signal cards ---- */
 .signal-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 50px;
+}
+@media (max-width: 920px) {
+  .signal-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .signal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.bt-line {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-2);
+  font-size: 12px;
+  color: var(--soft);
+  line-height: 1.6;
+}
+.bt-line.muted {
+  color: var(--muted);
+}
+.bt-line .pos {
+  color: var(--green);
+}
+.bt-line .neg {
+  color: var(--red);
 }
 .card {
   position: relative;
