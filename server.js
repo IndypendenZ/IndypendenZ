@@ -479,7 +479,7 @@ function annualVol(closes) {
 }
 
 // คำนวณทุกกลยุทธ์ของเหรียญเดียว
-function computeCoin(sym, closes) {
+function computeCoin(sym, closes, times) {
   const { rsi, avgGain, avgLoss } = rsiSeries(closes, 14);
   const e200 = ema(closes, 200);
   const s50 = sma(closes, 50);
@@ -516,6 +516,35 @@ function computeCoin(sym, closes) {
     bh: runStrat(closes, () => "LONG"),
   };
 
+  // หา "จุดเข้า" ของกลยุทธ์ RSI (วันที่ RSI ตัดขึ้นเหนือ 55 ครั้งล่าสุด)
+  let entry = null;
+  if (strat.rsi.state === "LONG") {
+    let st = "CASH";
+    let eIdx = null;
+    for (let i = 0; i < rsi.length; i++) {
+      if (rsi[i] == null) continue;
+      if (rsi[i] > 55 && st !== "LONG") {
+        st = "LONG";
+        eIdx = i;
+      } else if (rsi[i] < 45 && st !== "CASH") {
+        st = "CASH";
+        eIdx = null;
+      }
+    }
+    if (eIdx != null) {
+      const ep = closes[eIdx];
+      const now = closes[closes.length - 1];
+      const bars = closes.length - 1 - eIdx;
+      entry = {
+        price: ep,
+        date: times ? times[eIdx] : null,
+        barsHeld: bars,
+        pctSinceEntry: now / ep - 1,
+        isNew: bars <= 1,
+      };
+    }
+  }
+
   return {
     sym,
     lastClose: closes[closes.length - 1],
@@ -523,6 +552,7 @@ function computeCoin(sym, closes) {
     avgGain,
     avgLoss,
     annVol: annualVol(closes),
+    entry,
     signals: {
       rsi: strat.rsi.state,
       rsiEma: strat.rsiEma.state,
@@ -588,6 +618,27 @@ async function binancePriceMap(symbol = "BTCUSDT", pages = 4) {
   for (const x of batches.flat())
     map.set(new Date(x[0]).toISOString().slice(0, 10), parseFloat(x[4]));
   return map;
+}
+
+// ราคาปิดรายวัน + วันที่ (สำหรับหา "จุดเข้า" ของสัญญาณ)
+async function binanceDaily(symbol, pages = 2) {
+  let endTime = Date.now();
+  const batches = [];
+  for (let i = 0; i < pages; i++) {
+    const url = `${BINANCE}/api/v3/klines?symbol=${symbol}&interval=1d&limit=1000&endTime=${endTime}`;
+    const r = await fetch(url, { headers: { accept: "application/json" } });
+    if (!r.ok) break;
+    const k = await r.json();
+    if (!Array.isArray(k) || !k.length) break;
+    batches.unshift(k);
+    endTime = k[0][0] - 1;
+    if (k.length < 1000) break;
+  }
+  const rows = batches.flat();
+  return {
+    closes: rows.map((x) => parseFloat(x[4])),
+    times: rows.map((x) => new Date(x[0]).toISOString().slice(0, 10)),
+  };
 }
 
 // ดึง Top N เหรียญตามสภาพคล่อง (quote volume) จาก Binance — เลือกแบบเป็นกลาง
@@ -668,9 +719,9 @@ app.get("/api/signal", async (_req, res) => {
     const coins = [];
     for (const { sym: base, vol } of symbols) {
       try {
-        const closes = await binanceCloses(base + "USDT", 2); // ~2000 แท่ง (≈5.5 ปี)
+        const { closes, times } = await binanceDaily(base + "USDT", 2); // ~2000 แท่ง
         if (closes.length < 60) continue;
-        const coin = { ...computeCoin(base, closes), vol };
+        const coin = { ...computeCoin(base, closes, times), vol };
         coin.pass = coin.years >= PASS_MIN_YEARS && coin.annVol <= PASS_MAX_VOL;
         coins.push(coin);
       } catch {

@@ -44,6 +44,41 @@ function sigChip(label, st) {
   return `<span class="sig ${st === "LONG" ? "on" : ""}" title="${st === "LONG" ? "เข้าเกณฑ์ถือ" : "ถือเงินสด"}">${label}</span>`;
 }
 
+const signPct = (v) => (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+function fmtDate(s) {
+  if (!s) return "";
+  return new Date(s).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+function heldText(bars) {
+  if (bars <= 0) return "วันนี้";
+  if (bars < 30) return bars + " วัน";
+  return Math.round(bars / 30) + " เดือน (" + bars + " วัน)";
+}
+function entryRisk(pct) {
+  if (pct < 0.15)
+    return { cls: "go", text: "ราคายังใกล้จุดเข้า — เข้าตอนนี้ใกล้เคียงสัญญาณแรก (เข้าก่อน เสี่ยงต่ำกว่า)" };
+  if (pct < 0.6)
+    return { cls: "", text: "ราคาขยับจากจุดเข้าพอควรแล้ว — เข้าใหม่ได้ แต่ไม่ใช่ราคาแรก" };
+  return {
+    cls: "warn",
+    text: "⚠️ ราคาวิ่งไกลจากจุดเข้ามากแล้ว — เข้าตอนนี้ไล่ราคาสูง เสี่ยงกว่าคนที่ได้สัญญาณแรก",
+  };
+}
+function entryBoxHTML(c) {
+  const e = c.entry;
+  const r = entryRisk(e.pctSinceEntry);
+  const pcls = e.pctSinceEntry >= 0 ? "pos" : "neg";
+  return `<div class="entry-box">
+    <div class="entry-head">🟢 สัญญาณเข้าเมื่อ</div>
+    <div class="entry-line">${fmtDate(e.date)} @ ${fmtUSD(e.price)} · ถือมา <b>${heldText(e.barsHeld)}</b> · ตั้งแต่เข้า <b class="${pcls}" data-entry-pct>${signPct(e.pctSinceEntry)}</b></div>
+    <div class="entry-risk ${r.cls}" data-entry-risk>${r.text}</div>
+  </div>`;
+}
+
 // in-progress RSI หนึ่งสเต็ปจากแท่งปิดล่าสุด
 function liveRSI(s, price) {
   const d = price - s.lastClose;
@@ -156,8 +191,9 @@ function renderCards() {
       const isFav = state.fav.has(c.sym);
       const isWatch = state.watch.has(c.sym);
       const tv = `https://www.tradingview.com/chart/?symbol=BINANCE:${c.sym}USDT`;
+      const isNew = isLong && c.entry?.isNew;
       return `<div class="card ${isLong ? "is-long" : ""} ${isFav ? "is-fav" : ""}" id="c-${c.sym}">
-        ${isLong ? '<div class="long-tag">✓ เข้าเกณฑ์ถือ</div>' : ""}
+        ${isLong ? `<div class="long-tag${isNew ? " new" : ""}">${isNew ? "🆕 สัญญาณเข้าใหม่" : "✓ เข้าเกณฑ์ถือ"}</div>` : ""}
         <div class="card-top">
           <span class="sym">${c.sym}</span>
           <span class="live">LIVE</span>
@@ -201,6 +237,7 @@ function renderCards() {
           <div data-foot></div>
           <div class="flip" data-flip></div>
         </div>
+        ${isLong && c.entry ? entryBoxHTML(c) : ""}
       </div>`;
     })
     .join("");
@@ -228,6 +265,22 @@ function updateCard(sym, price, chg) {
     const el = $("[data-chg]", card);
     el.textContent = pctTxt(chg);
     el.className = "chg " + (chg >= 0 ? "up" : "down");
+  }
+
+  // อัปเดต % ตั้งแต่เข้า + คำเตือนความเสี่ยง ตามราคาสด
+  if (s.entry) {
+    const pct = price / s.entry.price - 1;
+    const pe = $("[data-entry-pct]", card);
+    if (pe) {
+      pe.textContent = signPct(pct);
+      pe.className = pct >= 0 ? "pos" : "neg";
+    }
+    const re = $("[data-entry-risk]", card);
+    if (re) {
+      const r = entryRisk(pct);
+      re.className = "entry-risk " + r.cls;
+      re.textContent = r.text;
+    }
   }
 
   const foot = $("[data-foot]", card);

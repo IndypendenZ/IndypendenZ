@@ -229,6 +229,48 @@ h1 {
   border-radius: 20px;
   box-shadow: 0 2px 8px rgba(47, 125, 82, 0.3);
 }
+.long-tag.new {
+  background: var(--terra);
+  box-shadow: 0 2px 10px rgba(226, 104, 63, 0.45);
+}
+
+/* กล่อง "สัญญาณเข้าเมื่อ" */
+.entry-box {
+  margin-top: 12px;
+  background: rgba(53, 193, 132, 0.08);
+  border: 1px solid rgba(53, 193, 132, 0.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+}
+.entry-head {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  color: var(--green);
+  margin-bottom: 4px;
+}
+.entry-line {
+  color: var(--soft);
+  line-height: 1.6;
+}
+.entry-risk {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.entry-risk.go {
+  color: var(--green);
+}
+.entry-risk.warn {
+  color: var(--red);
+  font-weight: 600;
+}
+.entry-line .pos {
+  color: var(--green);
+}
+.entry-line .neg {
+  color: var(--red);
+}
 .card.is-long .sym {
   color: var(--green);
 }
