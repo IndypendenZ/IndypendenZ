@@ -106,7 +106,10 @@ async function load() {
     renderFilterNote();
     renderBacktest();
   } catch (e) {
-    $("#statusbar").innerHTML = `<span class="r">โหลดไม่สำเร็จ: ${e.message}</span> — หน้านี้ดึงราคาจาก Yahoo Finance / Stooq (ปกติบนเครื่องตัวเองได้)`;
+    const hint = /429/.test(e.message)
+      ? " — โดน Yahoo จำกัดอัตรา (429) ชั่วคราว · รอ ~30-60 นาทีให้คูลดาวน์ หรือใส่ TWELVEDATA_API_KEY ในไฟล์ .env (ฟรี เสถียรกว่า · ดู README)"
+      : " — หน้านี้ดึงราคาจาก Yahoo Finance / Stooq / Twelve Data (ปกติบนเครื่องตัวเองได้)";
+    $("#statusbar").innerHTML = `<span class="r">โหลดไม่สำเร็จ: ${e.message}</span>${hint}`;
   }
 }
 

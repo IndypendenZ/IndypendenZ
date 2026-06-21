@@ -38,30 +38,23 @@ const SIGNAL_COUNT = 50;
 const PASS_MIN_YEARS = 2; // ประวัติ ≥ 2 ปี (ตัดเหรียญใหม่/ปั่น)
 const PASS_MAX_VOL = 1.5; // ความผันผวน ≤ 150%/ปี (ตัดเหรียญสวิงแรงแบบมีคนปั่น)
 
-// ===== หุ้น US (ข้อมูลราคาจาก Stooq ฟรี ไม่ต้องมี key) =====
+// ===== หุ้น US =====
 const STOCK_PPY = 252; // วันเทรดต่อปี (ตลาดหุ้นปิดเสาร์-อาทิตย์/วันหยุด)
 const STOCK_MIN_YEARS = 2; // ประวัติ ≥ 2 ปี
 const STOCK_MAX_VOL = 0.6; // ความผันผวน ≤ 60%/ปี (หุ้นผันผวนน้อยกว่าคริปโตมาก)
 // รายชื่อหุ้น US สภาพคล่องสูง คละกลุ่มอุตสาหกรรม — เลือกแบบเป็นกลาง (ไม่ได้เลือกจากผลกำไรในอดีต)
+// คัดเหลือ ~20 ตัว tier บน เพื่อให้โหลดเบา + ลดโอกาสโดน rate limit ของแหล่งฟรี
 const STOCK_TICKERS = [
-  // เทคโนโลยี / เซมิคอนดักเตอร์
-  "AAPL", "MSFT", "NVDA", "AMD", "INTC", "AVGO", "QCOM", "TXN", "ORCL",
-  "CRM", "ADBE", "CSCO", "IBM", "MU",
-  // อินเทอร์เน็ต / สื่อ
-  "AMZN", "GOOGL", "META", "NFLX", "DIS", "PYPL", "UBER",
-  // ยานยนต์
-  "TSLA", "F", "GM",
-  // การเงิน
-  "JPM", "BAC", "WFC", "GS", "V", "MA",
-  // สุขภาพ
-  "UNH", "JNJ", "PFE", "MRK", "ABBV",
-  // สินค้าอุปโภคบริโภค / ค้าปลีก
-  "WMT", "COST", "HD", "NKE", "MCD", "SBUX", "KO", "PEP", "PG",
-  // พลังงาน / อุตสาหกรรม
-  "XOM", "CVX", "BA", "CAT", "GE",
-  // โทรคมนาคม
-  "T", "VZ",
+  "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", // เทค/อินเทอร์เน็ต
+  "JPM", "V", "MA", // การเงิน
+  "UNH", "JNJ", // สุขภาพ
+  "WMT", "HD", "COST", "KO", "PG", // ค้าปลีก/อุปโภคบริโภค
+  "XOM", // พลังงาน
 ];
+
+// Twelve Data API key (ไม่บังคับ) — ฟรี ลิมิตสูงกว่า Yahoo/Stooq มาก เสถียรกว่า
+// ถ้าใส่ key จะใช้ Twelve Data เป็นแหล่งหลักของหน้าหุ้นทันที (กัน 429 จาก Yahoo)
+const TD_KEY = process.env.TWELVEDATA_API_KEY || "";
 
 // สร้าง client เฉพาะเมื่อมี ANTHROPIC_API_KEY (อ่านจาก env อัตโนมัติ)
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
@@ -949,17 +942,52 @@ async function stooqDaily(ticker) {
   return { closes, times };
 }
 
-// ดึงราคาหุ้น: ลอง Yahoo ก่อน ถ้าไม่ได้ค่อย Stooq
+// ดึงราคาหุ้น: ถ้ามี Twelve Data key ใช้ก่อน (เสถียรสุด) แล้วค่อย Yahoo → Stooq
 async function stockDaily(ticker) {
-  try {
-    return await yahooDaily(ticker);
-  } catch (e1) {
+  const errs = [];
+  if (TD_KEY) {
     try {
-      return await stooqDaily(ticker);
-    } catch (e2) {
-      throw new Error(`${e1.message} | ${e2.message}`);
+      return await twelveDataDaily(ticker);
+    } catch (e) {
+      errs.push(e.message);
     }
   }
+  try {
+    return await yahooDaily(ticker);
+  } catch (e) {
+    errs.push(e.message);
+  }
+  try {
+    return await stooqDaily(ticker);
+  } catch (e) {
+    errs.push(e.message);
+  }
+  throw new Error(errs.join(" | "));
+}
+
+// แหล่งทางเลือก: Twelve Data (ฟรี มี key · 800 ครั้ง/วัน, 8 ครั้ง/นาที) — เสถียรกว่ามาก
+async function twelveDataDaily(ticker) {
+  const url =
+    `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}` +
+    `&interval=1day&outputsize=5000&apikey=${TD_KEY}`;
+  const r = await fetch(url, { headers: { accept: "application/json" } });
+  if (!r.ok) throw new Error(`TwelveData ${ticker} ${r.status}`);
+  const j = await r.json();
+  if (j.status === "error")
+    throw new Error(`TwelveData ${ticker}: ${j.message || j.code}`);
+  const values = j.values || [];
+  if (!values.length) throw new Error(`TwelveData ${ticker}: ไม่มีข้อมูล`);
+  // Twelve Data ส่งใหม่→เก่า → กลับเป็นเก่า→ใหม่
+  const closes = [];
+  const times = [];
+  for (const v of [...values].reverse()) {
+    const c = parseFloat(v.close);
+    if (!isFinite(c) || c <= 0) continue;
+    times.push(v.datetime);
+    closes.push(c);
+  }
+  if (closes.length < 60) throw new Error(`TwelveData ${ticker}: ข้อมูลน้อยเกินไป`);
+  return { closes, times };
 }
 
 app.get("/api/stock-signal", async (_req, res) => {
@@ -981,7 +1009,8 @@ app.get("/api/stock-signal", async (_req, res) => {
       } catch (err) {
         lastErr = err.message; // เก็บไว้บอกสาเหตุถ้าพังทั้งหมด
       }
-      await new Promise((r) => setTimeout(r, 300)); // หน่วงกันโดน rate limit (Yahoo/Stooq)
+      // Twelve Data ฟรีจำกัด 8 ครั้ง/นาที → หน่วง ~8 วิ · Yahoo/Stooq หน่วงสั้นพอ
+      await new Promise((r) => setTimeout(r, TD_KEY ? 8000 : 300));
     }
     if (!stocks.length)
       throw new Error("ดึงข้อมูลหุ้นไม่ได้ (Yahoo/Stooq)" + (lastErr ? " · " + lastErr : ""));
@@ -1345,5 +1374,10 @@ app.listen(PORT, () => {
     CG_KEY
       ? "🪙 CoinGecko: ใช้ Demo key (ลิมิตสูง — หน้า RSI ใช้ได้เต็มที่)"
       : "⚠️  CoinGecko: ไม่มี key (ลิมิตต่ำ — หน้า RSI อาจขึ้นบางเหรียญ ใส่ COINGECKO_API_KEY เพื่อแก้)"
+  );
+  console.log(
+    TD_KEY
+      ? "💵 หุ้น US: ใช้ Twelve Data key (เสถียร ไม่ค่อยโดน 429 · โหลดครั้งแรก ~2-3 นาที)"
+      : "💵 หุ้น US: ใช้ Yahoo/Stooq ฟรี (ถ้าโดน 429 บ่อย ใส่ TWELVEDATA_API_KEY เพื่อแก้)"
   );
 });
