@@ -856,31 +856,74 @@ const STOCK_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 // แหล่งหลัก: Yahoo Finance chart API (JSON, ประวัติยาว, ใช้ราคาปรับ split/ปันผล)
-async function yahooDaily(ticker) {
+// Yahoo จำกัดอัตราเรียกแบบไม่มี session → ขอ cookie + crumb ก่อนเพื่อยกลิมิตให้สูงขึ้น
+let yahooAuth = null;
+async function getYahooAuth() {
+  if (yahooAuth) return yahooAuth;
+  let cookie = "";
+  try {
+    const r1 = await fetch("https://fc.yahoo.com/", {
+      headers: { "user-agent": STOCK_UA },
+    });
+    const sc =
+      typeof r1.headers.getSetCookie === "function"
+        ? r1.headers.getSetCookie()
+        : r1.headers.get("set-cookie")
+        ? [r1.headers.get("set-cookie")]
+        : [];
+    cookie = sc.map((c) => c.split(";")[0]).join("; ");
+  } catch {
+    /* ไม่มี cookie ก็ลองต่อ */
+  }
+  let crumb = "";
+  try {
+    const r2 = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+      headers: { "user-agent": STOCK_UA, cookie, accept: "text/plain" },
+    });
+    if (r2.ok) crumb = (await r2.text()).trim();
+  } catch {
+    /* บาง endpoint ไม่ต้องใช้ crumb */
+  }
+  yahooAuth = { cookie, crumb };
+  return yahooAuth;
+}
+
+async function yahooDaily(ticker, retries = 2) {
+  const { cookie, crumb } = await getYahooAuth();
   const url =
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
-    `?range=10y&interval=1d`;
-  const r = await fetch(url, {
-    headers: { "user-agent": STOCK_UA, accept: "application/json" },
-  });
-  if (!r.ok) throw new Error(`Yahoo ${ticker} ${r.status}`);
-  const j = await r.json();
-  const result = j?.chart?.result?.[0];
-  if (!result || !Array.isArray(result.timestamp))
-    throw new Error(`Yahoo ${ticker}: ไม่มีข้อมูล`);
-  const ts = result.timestamp;
-  const closeArr = result.indicators?.quote?.[0]?.close || [];
-  const adjArr = result.indicators?.adjclose?.[0]?.adjclose || null; // ปรับ split/ปันผล
-  const closes = [];
-  const times = [];
-  for (let i = 0; i < ts.length; i++) {
-    const c = adjArr && adjArr[i] != null ? adjArr[i] : closeArr[i];
-    if (c == null || !isFinite(c) || c <= 0) continue;
-    times.push(new Date(ts[i] * 1000).toISOString().slice(0, 10));
-    closes.push(c);
+    `?range=10y&interval=1d` +
+    (crumb ? `&crumb=${encodeURIComponent(crumb)}` : "");
+  const headers = { "user-agent": STOCK_UA, accept: "application/json" };
+  if (cookie) headers.cookie = cookie;
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch(url, { headers });
+    if (r.status === 429 && attempt < retries) {
+      yahooAuth = null; // รีเฟรช session แล้วลองใหม่
+      await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+      const a = await getYahooAuth();
+      if (a.cookie) headers.cookie = a.cookie;
+      continue;
+    }
+    if (!r.ok) throw new Error(`Yahoo ${ticker} ${r.status}`);
+    const j = await r.json();
+    const result = j?.chart?.result?.[0];
+    if (!result || !Array.isArray(result.timestamp))
+      throw new Error(`Yahoo ${ticker}: ไม่มีข้อมูล`);
+    const ts = result.timestamp;
+    const closeArr = result.indicators?.quote?.[0]?.close || [];
+    const adjArr = result.indicators?.adjclose?.[0]?.adjclose || null; // ปรับ split/ปันผล
+    const closes = [];
+    const times = [];
+    for (let i = 0; i < ts.length; i++) {
+      const c = adjArr && adjArr[i] != null ? adjArr[i] : closeArr[i];
+      if (c == null || !isFinite(c) || c <= 0) continue;
+      times.push(new Date(ts[i] * 1000).toISOString().slice(0, 10));
+      closes.push(c);
+    }
+    if (closes.length < 60) throw new Error(`Yahoo ${ticker}: ข้อมูลน้อยเกินไป`);
+    return { closes, times };
   }
-  if (closes.length < 60) throw new Error(`Yahoo ${ticker}: ข้อมูลน้อยเกินไป`);
-  return { closes, times };
 }
 
 // แหล่งสำรอง: Stooq CSV — Date,Open,High,Low,Close,Volume (เรียงเก่า→ใหม่)
@@ -938,7 +981,7 @@ app.get("/api/stock-signal", async (_req, res) => {
       } catch (err) {
         lastErr = err.message; // เก็บไว้บอกสาเหตุถ้าพังทั้งหมด
       }
-      await new Promise((r) => setTimeout(r, 120)); // หน่วงเล็กน้อยกันโดนบล็อก
+      await new Promise((r) => setTimeout(r, 300)); // หน่วงกันโดน rate limit (Yahoo/Stooq)
     }
     if (!stocks.length)
       throw new Error("ดึงข้อมูลหุ้นไม่ได้ (Yahoo/Stooq)" + (lastErr ? " · " + lastErr : ""));
