@@ -1,9 +1,34 @@
 import express from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// โหลดไฟล์ .env เอง (กันกรณีรันด้วย `npm start` / `node server.js` ที่ไม่อ่าน .env ให้อัตโนมัติ)
+(function loadEnv() {
+  try {
+    const p = path.join(__dirname, ".env");
+    if (!fs.existsSync(p)) return;
+    for (const raw of fs.readFileSync(p, "utf8").split("\n")) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      const eq = line.indexOf("=");
+      if (eq === -1) continue;
+      const key = line.slice(0, eq).trim();
+      let val = line.slice(eq + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      )
+        val = val.slice(1, -1);
+      if (key && process.env[key] === undefined) process.env[key] = val;
+    }
+  } catch {
+    /* อ่าน .env ไม่ได้ก็ข้ามไป */
+  }
+})();
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
