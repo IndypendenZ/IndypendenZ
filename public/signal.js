@@ -110,6 +110,7 @@ async function load() {
     renderOrder();
     renderCards();
     renderFilterNote();
+    renderBacktest2y();
     connectWS();
   } catch (e) {
     $("#statusbar").innerHTML = `<span class="r">โหลดไม่สำเร็จ: ${e.message}</span> — หน้านี้ต้องเข้าถึง api.binance.com (ปกติบนเครื่องตัวเองได้)`;
@@ -164,6 +165,43 @@ function renderOrder() {
     $("#order-title").innerHTML = `ทั้งหมดถือเงินสด <span class="syms">(CASH)</span>`;
     $("#order-sub").textContent = `0 จาก ${list.length} เหรียญที่ RSI > 55 — กลยุทธ์แนะให้ถือเงินสดทั้งหมดตอนนี้`;
   }
+}
+
+// Backtest 2 ปี: รวมเทรดของทุกเหรียญที่แสดงอยู่
+function renderBacktest2y() {
+  const list = shownCoins();
+  const all = [];
+  list.forEach((c) =>
+    (c.trades2y?.list || []).filter((t) => !t.open).forEach((t) => all.push(t))
+  );
+  const n = all.length;
+  const wins = all.filter((t) => t.ret > 0).length;
+  const wr = n ? (wins / n) * 100 : 0;
+  const avg = n ? (all.reduce((a, b) => a + b.ret, 0) / n) * 100 : 0;
+  const wrCls = wr >= 50 ? "g" : "r";
+  $("#bt2y-head").innerHTML = n
+    ? `โอกาสกำไร <b class="${wrCls}">${wr.toFixed(0)}%</b> · จาก <b>${n}</b> เทรด (${wins} ชนะ) · กำไรเฉลี่ย <b class="${avg >= 0 ? "g" : "r"}">${avg >= 0 ? "+" : ""}${avg.toFixed(1)}%</b>/เทรด`
+    : "ยังไม่มีเทรดที่จบในช่วง 2 ปี";
+
+  const rows = list
+    .filter((c) => c.trades2y && c.trades2y.n > 0)
+    .sort((a, b) => b.trades2y.totalRet - a.trades2y.totalRet);
+  $("#bt2y-body").innerHTML = rows.length
+    ? rows
+        .map((c) => {
+          const t = c.trades2y;
+          const w = (t.wins / t.n) * 100;
+          return `<tr>
+            <td class="csym">${c.sym}</td>
+            <td class="num">${t.n}</td>
+            <td class="num">${t.wins}</td>
+            <td class="num ${w >= 50 ? "g" : "r"}">${w.toFixed(0)}%</td>
+            <td class="num ${t.avgRet >= 0 ? "g" : "r"}">${signPct(t.avgRet)}</td>
+            <td class="num ${t.totalRet >= 0 ? "g" : "r"}">${signPct(t.totalRet)}</td>
+          </tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="6" class="loading">ไม่มีเทรดในช่วง 2 ปี</td></tr>`;
 }
 
 const consensus = (c) => Object.values(c.signals).filter((s) => s === "LONG").length;
@@ -475,6 +513,7 @@ document.querySelectorAll("#filter-seg button").forEach((b) =>
       renderOrder();
       renderCards();
       renderFilterNote();
+      renderBacktest2y();
     }
   })
 );

@@ -649,6 +649,15 @@ h1 {
   padding-top: 22px;
 }
 
+.bt2y-headline {
+  background: var(--paper);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 16px;
+  margin-bottom: 14px;
+}
+
 /* ---- MVRV chart ---- */
 .chart-title {
   font-family: "Playfair Display", "IBM Plex Sans Thai", serif;

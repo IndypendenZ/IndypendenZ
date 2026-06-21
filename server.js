@@ -545,6 +545,47 @@ function computeCoin(sym, closes, times) {
     }
   }
 
+  // backtest per-trade ช่วง 2 ปีล่าสุด: เข้าวันแรกของสัญญาณ ถือจนจบ
+  const FEE = 0.0004;
+  const winStart = Math.max(0, closes.length - 730);
+  let st2 = "CASH";
+  let eIdx2 = null;
+  const tradeList = [];
+  for (let i = 0; i < rsi.length; i++) {
+    if (rsi[i] == null) continue;
+    if (rsi[i] > 55 && st2 !== "LONG") {
+      st2 = "LONG";
+      eIdx2 = i;
+    } else if (rsi[i] < 45 && st2 !== "CASH") {
+      if (st2 === "LONG" && eIdx2 != null && eIdx2 >= winStart) {
+        tradeList.push({
+          entry: times ? times[eIdx2] : null,
+          exit: times ? times[i] : null,
+          ret: (closes[i] / closes[eIdx2]) * (1 - FEE) * (1 - FEE) - 1,
+          open: false,
+        });
+      }
+      st2 = "CASH";
+      eIdx2 = null;
+    }
+  }
+  if (st2 === "LONG" && eIdx2 != null && eIdx2 >= winStart) {
+    tradeList.push({
+      entry: times ? times[eIdx2] : null,
+      exit: null,
+      ret: (closes[closes.length - 1] / closes[eIdx2]) * (1 - FEE) - 1,
+      open: true,
+    });
+  }
+  const closed = tradeList.filter((t) => !t.open);
+  const trades2y = {
+    n: closed.length,
+    wins: closed.filter((t) => t.ret > 0).length,
+    avgRet: closed.length ? closed.reduce((a, b) => a + b.ret, 0) / closed.length : 0,
+    totalRet: tradeList.reduce((a, b) => a * (1 + b.ret), 1) - 1,
+    list: tradeList,
+  };
+
   return {
     sym,
     lastClose: closes[closes.length - 1],
@@ -553,6 +594,7 @@ function computeCoin(sym, closes, times) {
     avgLoss,
     annVol: annualVol(closes),
     entry,
+    trades2y,
     signals: {
       rsi: strat.rsi.state,
       rsiEma: strat.rsiEma.state,

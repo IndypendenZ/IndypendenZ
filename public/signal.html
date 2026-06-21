@@ -63,6 +63,33 @@
       </div>
       <section id="signal-grid" class="signal-grid"></section>
 
+      <!-- Backtest per-trade 2 ปี -->
+      <h2 class="section-h" style="font-size:24px">
+        Backtest 2 ปี · เข้าวันแรกของสัญญาณ ถือจนจบ
+      </h2>
+      <p class="bt-intro">
+        ทดลองกฎ RSI 55/45: <em>เข้าซื้อวันแรกที่ RSI ตัดขึ้นเหนือ 55 → ถือจนกว่า RSI หลุดต่ำกว่า 45</em>
+        (คิดค่าธรรมเนียม 0.04%/ขา) นับเฉพาะเทรดที่จบแล้วในช่วง 2 ปีล่าสุด · คำนวณสดจากราคา Binance
+      </p>
+      <div class="bt2y-headline" id="bt2y-head">—</div>
+      <div class="table-wrap">
+        <table class="bt-table">
+          <thead>
+            <tr>
+              <th>เหรียญ</th>
+              <th class="num">เทรด</th>
+              <th class="num">ชนะ</th>
+              <th class="num">โอกาสกำไร</th>
+              <th class="num">กำไรเฉลี่ย/เทรด</th>
+              <th class="num">รวม (ทบต้น)</th>
+            </tr>
+          </thead>
+          <tbody id="bt2y-body">
+            <tr><td colspan="6" class="loading">กำลังคำนวณ…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
       <footer class="foot">
         CryptoDash · RSI Signal · ใช้ส่วนตัว · ข้อมูล Binance spot ·
         <b>เพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน</b> ·
