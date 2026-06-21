@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RSI Signal · กลยุทธ์ RSI 55/45 + Backtest</title>
+    <title>หุ้น US · RSI Signal + Backtest</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,23 +15,21 @@
   <body>
     <div class="wrap">
       <a class="back" href="/">← กลับแดชบอร์ด</a>
-      <a class="back" href="/mvrv.html" style="margin-left:14px">MVRV →</a>
-      <a class="back" href="/stocks.html" style="margin-left:14px">หุ้น US →</a>
+      <a class="back" href="/signal.html" style="margin-left:14px">RSI คริปโต →</a>
 
       <header class="hero">
         <div class="hero-main">
-          <div class="eyebrow">REALTIME RSI SIGNAL + BACKTEST</div>
-          <h1><span class="btc">₿</span> RSI Signal</h1>
+          <div class="eyebrow">US STOCKS · RSI SIGNAL + BACKTEST</div>
+          <h1><span class="btc">$</span> หุ้น US</h1>
           <p class="lead">
-            ตอนนี้เหรียญที่ติดตามควรถือสถานะไหน — ตามกฎ
-            <em class="hl">RSI 55/45 long-only</em> ราคา + in-progress RSI
-            อัปเดตสด (WebSocket จาก Binance) ส่วนสถานะ LONG/CASH
-            ยึด<em>แท่งปิด</em>เหมือนเดิมเพื่อกัน look-ahead
+            หุ้นสหรัฐสภาพคล่องสูงควรถือสถานะไหนตอนนี้ — ตามกฎเดียวกับคริปโต
+            <em class="hl">RSI 55/45 long-only</em> สถานะ LONG/CASH
+            ยึด<em>ราคาปิดรายวัน</em>เพื่อกัน look-ahead · ข้อมูลจาก Stooq (ฟรี)
           </p>
         </div>
         <div class="hero-meta">
           <div id="clock" class="clock">—</div>
-          <div class="src">data · Binance spot · daily close</div>
+          <div class="src">data · Stooq · daily close</div>
         </div>
       </header>
 
@@ -59,7 +57,7 @@
         <div class="sort-seg" id="sort-seg">
           <button data-sort="signal" class="active">สัญญาณ (เข้าเกณฑ์มากสุด)</button>
           <button data-sort="rsi">RSI 14</button>
-          <button data-sort="vol">Volume</button>
+          <button data-sort="vol">ผันผวนต่ำ</button>
         </div>
       </div>
       <section id="signal-grid" class="signal-grid"></section>
@@ -70,16 +68,16 @@
       </h2>
       <p class="bt-intro">
         ทดลองกฎ RSI 55/45: <em>เข้าซื้อวันแรกที่ RSI ตัดขึ้นเหนือ 55 → ถือจนกว่า RSI หลุดต่ำกว่า 45</em>
-        (คิดค่าธรรมเนียม 0.04%/ขา) นับทุกเทรดที่จบแล้ว<b>ตลอดประวัติเท่าที่ Binance มี</b>
-        (รวมตลาดหมีปี 2018/2022) · คำนวณสดจากราคาจริง
+        (คิดค่าธรรมเนียม 0.04%/ขา) นับทุกเทรดที่จบแล้ว<b>ตลอดประวัติเท่าที่ Stooq มี</b>
+        · คำนวณสดจากราคาปิดจริง
       </p>
       <div class="bt2y-headline" id="bt2y-head">—</div>
-      <p class="filter-note">รายละเอียดต่อเหรียญดูได้บนการ์ดแต่ละใบด้านบน (บรรทัด 📊 Backtest)</p>
+      <p class="filter-note">รายละเอียดต่อหุ้นดูได้บนการ์ดแต่ละใบด้านบน (บรรทัด 📊 Backtest)</p>
 
       <footer class="foot">
-        CryptoDash · RSI Signal · ใช้ส่วนตัว · ข้อมูล Binance spot ·
+        CryptoDash · หุ้น US · ใช้ส่วนตัว · ข้อมูล Stooq (ราคาปิดรายวัน) ·
         <b>เพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน</b> ·
-        สัญญาณอิงแท่งปิดล่าสุด · คริปโตผันผวนสูง อาจสูญเสียเงินต้น
+        สัญญาณอิงราคาปิดล่าสุด · หุ้นมีความเสี่ยง อาจสูญเสียเงินต้น
       </footer>
     </div>
 
@@ -87,12 +85,12 @@
     <button id="chat-fab" class="chat-fab" title="ถาม AI">🤖</button>
     <div id="chat-panel" class="chat-panel hidden">
       <div class="chat-head">
-        <span>🤖 ผู้ช่วย AI · RSI Signal</span>
+        <span>🤖 ผู้ช่วย AI · หุ้น US</span>
         <button id="chat-close" type="button">✕</button>
       </div>
       <div id="chat-log" class="chat-log">
         <div class="chat-msg bot">
-          ถามได้เลยครับ เช่น "ตอนนี้เหรียญไหนน่าจับตา", "RSI กับ MACD ต่างกันยังไง",
+          ถามได้เลยครับ เช่น "ตอนนี้หุ้นไหนน่าจับตา", "RSI กับ MACD ต่างกันยังไง",
           "สัญญาณตอนนี้บอกอะไร"
         </div>
       </div>
@@ -102,6 +100,6 @@
       </form>
     </div>
 
-    <script src="/signal.js"></script>
+    <script src="/stocks.js"></script>
   </body>
 </html>

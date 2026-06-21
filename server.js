@@ -38,6 +38,31 @@ const SIGNAL_COUNT = 50;
 const PASS_MIN_YEARS = 2; // ประวัติ ≥ 2 ปี (ตัดเหรียญใหม่/ปั่น)
 const PASS_MAX_VOL = 1.5; // ความผันผวน ≤ 150%/ปี (ตัดเหรียญสวิงแรงแบบมีคนปั่น)
 
+// ===== หุ้น US (ข้อมูลราคาจาก Stooq ฟรี ไม่ต้องมี key) =====
+const STOCK_PPY = 252; // วันเทรดต่อปี (ตลาดหุ้นปิดเสาร์-อาทิตย์/วันหยุด)
+const STOCK_MIN_YEARS = 2; // ประวัติ ≥ 2 ปี
+const STOCK_MAX_VOL = 0.6; // ความผันผวน ≤ 60%/ปี (หุ้นผันผวนน้อยกว่าคริปโตมาก)
+// รายชื่อหุ้น US สภาพคล่องสูง คละกลุ่มอุตสาหกรรม — เลือกแบบเป็นกลาง (ไม่ได้เลือกจากผลกำไรในอดีต)
+const STOCK_TICKERS = [
+  // เทคโนโลยี / เซมิคอนดักเตอร์
+  "AAPL", "MSFT", "NVDA", "AMD", "INTC", "AVGO", "QCOM", "TXN", "ORCL",
+  "CRM", "ADBE", "CSCO", "IBM", "MU",
+  // อินเทอร์เน็ต / สื่อ
+  "AMZN", "GOOGL", "META", "NFLX", "DIS", "PYPL", "UBER",
+  // ยานยนต์
+  "TSLA", "F", "GM",
+  // การเงิน
+  "JPM", "BAC", "WFC", "GS", "V", "MA",
+  // สุขภาพ
+  "UNH", "JNJ", "PFE", "MRK", "ABBV",
+  // สินค้าอุปโภคบริโภค / ค้าปลีก
+  "WMT", "COST", "HD", "NKE", "MCD", "SBUX", "KO", "PEP", "PG",
+  // พลังงาน / อุตสาหกรรม
+  "XOM", "CVX", "BA", "CAT", "GE",
+  // โทรคมนาคม
+  "T", "VZ",
+];
+
 // สร้าง client เฉพาะเมื่อมี ANTHROPIC_API_KEY (อ่านจาก env อัตโนมัติ)
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
@@ -428,7 +453,8 @@ function rollMin(v, p) {
 }
 
 // backtest แบบทั่วไป: stateAt(i) คืน "LONG"/"CASH"/null(คงสถานะ)
-function runStrat(closes, stateAt, fee = 0.0004) {
+// ppy = แท่ง/ปี (คริปโต 365 วันรวมเสาร์-อาทิตย์ · หุ้น ~252 วันเทรด)
+function runStrat(closes, stateAt, fee = 0.0004, ppy = 365) {
   let state = "CASH";
   let eq = 1;
   let peak = 1;
@@ -452,7 +478,7 @@ function runStrat(closes, stateAt, fee = 0.0004) {
   }
   const w = stateAt(closes.length - 1);
   if (w) state = w;
-  const years = (closes.length - 1) / 365.25;
+  const years = (closes.length - 1) / ppy;
   const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
   const sd = Math.sqrt(
     rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length || 1)
@@ -460,7 +486,7 @@ function runStrat(closes, stateAt, fee = 0.0004) {
   return {
     final: eq,
     cagr: Math.pow(eq, 1 / years) - 1,
-    sharpe: sd > 0 ? (mean / sd) * Math.sqrt(365) : 0,
+    sharpe: sd > 0 ? (mean / sd) * Math.sqrt(ppy) : 0,
     mdd,
     trades,
     state,
@@ -469,17 +495,17 @@ function runStrat(closes, stateAt, fee = 0.0004) {
 }
 
 // ความผันผวนต่อปี (annualized volatility) จากผลตอบแทนรายวัน
-function annualVol(closes) {
+function annualVol(closes, ppy = 365) {
   const rets = [];
   for (let i = 1; i < closes.length; i++) rets.push(closes[i] / closes[i - 1] - 1);
   const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
   const variance =
     rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length || 1);
-  return Math.sqrt(variance) * Math.sqrt(365);
+  return Math.sqrt(variance) * Math.sqrt(ppy);
 }
 
-// คำนวณทุกกลยุทธ์ของเหรียญเดียว
-function computeCoin(sym, closes, times) {
+// คำนวณทุกกลยุทธ์ของสินทรัพย์เดียว (เหรียญหรือหุ้น)
+function computeCoin(sym, closes, times, ppy = 365) {
   const { rsi, avgGain, avgLoss } = rsiSeries(closes, 14);
   const e200 = ema(closes, 200);
   const s50 = sma(closes, 50);
@@ -508,12 +534,12 @@ function computeCoin(sym, closes, times) {
   };
 
   const strat = {
-    rsi: runStrat(closes, stRsi),
-    rsiEma: runStrat(closes, stRsiEma),
-    maCross: runStrat(closes, stMa),
-    macd: runStrat(closes, stMacd),
-    donchian: runStrat(closes, stDon),
-    bh: runStrat(closes, () => "LONG"),
+    rsi: runStrat(closes, stRsi, 0.0004, ppy),
+    rsiEma: runStrat(closes, stRsiEma, 0.0004, ppy),
+    maCross: runStrat(closes, stMa, 0.0004, ppy),
+    macd: runStrat(closes, stMacd, 0.0004, ppy),
+    donchian: runStrat(closes, stDon, 0.0004, ppy),
+    bh: runStrat(closes, () => "LONG", 0.0004, ppy),
   };
 
   // หา "จุดเข้า" ของกลยุทธ์ RSI (วันที่ RSI ตัดขึ้นเหนือ 55 ครั้งล่าสุด)
@@ -583,7 +609,7 @@ function computeCoin(sym, closes, times) {
     wins: closed.filter((t) => t.ret > 0).length,
     avgRet: closed.length ? closed.reduce((a, b) => a + b.ret, 0) / closed.length : 0,
     totalRet: tradeList.reduce((a, b) => a * (1 + b.ret), 1) - 1,
-    years: (closes.length - 1) / 365.25,
+    years: (closes.length - 1) / ppy,
     list: tradeList,
   };
 
@@ -593,7 +619,7 @@ function computeCoin(sym, closes, times) {
     rsiLast: rsi[rsi.length - 1],
     avgGain,
     avgLoss,
-    annVol: annualVol(closes),
+    annVol: annualVol(closes, ppy),
     entry,
     bt,
     signals: {
@@ -823,6 +849,126 @@ app.get("/api/signal", async (_req, res) => {
     if (stale) return res.json(stale);
     res.status(502).json({ error: e.message });
   }
+});
+
+// ===== หุ้น US: ดึงราคาปิดรายวันจาก Stooq (ฟรี ไม่ต้องมี key) =====
+const STOCK_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+// Stooq คืน CSV: Date,Open,High,Low,Close,Volume (เรียงเก่า→ใหม่)
+async function stooqDaily(ticker) {
+  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(
+    ticker.toLowerCase()
+  )}.us&i=d`;
+  const r = await fetch(url, { headers: { "user-agent": STOCK_UA } });
+  if (!r.ok) throw new Error(`Stooq ${ticker} ${r.status}`);
+  const text = await r.text();
+  const lines = text.trim().split("\n");
+  if (lines.length < 2 || !/^date/i.test(lines[0]))
+    throw new Error(`Stooq ${ticker}: ไม่มีข้อมูล`);
+  const closes = [];
+  const times = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",");
+    const close = parseFloat(cols[4]);
+    if (!isFinite(close) || close <= 0) continue;
+    times.push(cols[0]);
+    closes.push(close);
+  }
+  return { closes, times };
+}
+
+app.get("/api/stock-signal", async (_req, res) => {
+  const cached = getCached("stock-signal", 1800_000); // แคช 30 นาที (หุ้นอัปเดตวันละครั้งพอ)
+  if (cached) return res.json(cached);
+  try {
+    const stocks = [];
+    for (const ticker of STOCK_TICKERS) {
+      try {
+        const { closes, times } = await stooqDaily(ticker);
+        if (closes.length < 60) continue;
+        const s = computeCoin(ticker, closes, times, STOCK_PPY);
+        s.pass = s.years >= STOCK_MIN_YEARS && s.annVol <= STOCK_MAX_VOL;
+        s.chgPct =
+          closes.length > 1 ? closes[closes.length - 1] / closes[closes.length - 2] - 1 : null;
+        s.lastDate = times[times.length - 1];
+        stocks.push(s);
+      } catch {
+        /* ข้ามหุ้นที่ดึงไม่ได้ */
+      }
+      await new Promise((r) => setTimeout(r, 120)); // หน่วงเล็กน้อยกันโดนบล็อก
+    }
+    if (!stocks.length) throw new Error("ดึงข้อมูลหุ้นจาก Stooq ไม่ได้");
+
+    const passing = stocks.filter((c) => c.pass);
+    const base = passing.length ? passing : stocks;
+
+    const strategies = STRAT_DEFS.map(([key, label]) => {
+      const arr = base.map((c) => c.strat[key]);
+      return {
+        key,
+        label,
+        total: arr.reduce((a, b) => a + b.final * 10000, 0),
+        avgCagr: arr.reduce((a, b) => a + b.cagr, 0) / arr.length,
+        avgSharpe: arr.reduce((a, b) => a + b.sharpe, 0) / arr.length,
+        worstMdd: Math.min(...arr.map((b) => b.mdd)),
+        avgTrades: arr.reduce((a, b) => a + b.trades, 0) / arr.length,
+      };
+    });
+
+    const cleanStocks = stocks.map(({ strat, ...rest }) => rest);
+    const data = {
+      coins: cleanStocks,
+      strategies,
+      meta: {
+        nAll: stocks.length,
+        nPass: passing.length,
+        minYears: STOCK_MIN_YEARS,
+        maxVol: STOCK_MAX_VOL,
+        trackYears: Math.max(...base.map((c) => c.years)),
+        invested: base.length * 10000,
+        market: "US",
+      },
+      portfolio: {
+        n: base.length,
+        totalRSI: base.reduce((a, b) => a + b.finalRSI * 10000, 0),
+        totalBH: base.reduce((a, b) => a + b.finalBH * 10000, 0),
+        invested: base.length * 10000,
+        avgCagr: base.reduce((a, b) => a + b.cagr, 0) / base.length,
+        avgSharpe: base.reduce((a, b) => a + b.sharpe, 0) / base.length,
+        worstMdd: Math.min(...base.map((c) => c.mdd)),
+        years: Math.max(...base.map((c) => c.years)),
+      },
+      updatedAt: Date.now(),
+    };
+    setCached("stock-signal", data);
+    res.json(data);
+  } catch (e) {
+    const stale = getStale("stock-signal");
+    if (stale) return res.json(stale);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// ---- AI วิเคราะห์สัญญาณหุ้น (หน้า Stocks) ----
+app.post("/api/stock-analysis", async (req, res) => {
+  if (!anthropic)
+    return res.status(503).json({ error: "ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์" });
+  const { summary = null } = req.body || {};
+  if (!summary) return res.status(400).json({ error: "ไม่มีข้อมูลสัญญาณ" });
+  const system =
+    "คุณเป็นผู้ช่วยวิเคราะห์สัญญาณเทคนิคหุ้นสหรัฐเชิงการศึกษา ภาษาไทย " +
+    "อธิบายภาพรวมของสัญญาณที่ให้มา (หุ้นไหนเข้าเกณฑ์ถือ/ใกล้พลิก/หลายกลยุทธ์เห็นพ้อง) อย่างเป็นกลาง " +
+    "ชี้ทั้งโอกาสและความเสี่ยง ห้ามชี้นำซื้อ/ขายแบบฟันธง ปิดท้ายด้วยคำเตือนว่าไม่ใช่คำแนะนำการลงทุน";
+  const userPrompt =
+    "นี่คือสัญญาณ RSI/กลยุทธ์ล่าสุดของหุ้น US ที่ติดตาม ช่วยสรุปเป็นภาษาไทยอ่านง่าย:\n\n```json\n" +
+    JSON.stringify(summary).slice(0, 5000) +
+    "\n```\n\nจัดเป็นหัวข้อ: 1) ภาพรวมตอนนี้ 2) หุ้นที่น่าจับตา (เข้าเกณฑ์/ใกล้พลิก) 3) สิ่งที่ต้องระวัง 4) คำเตือน";
+  await streamClaude(res, {
+    system,
+    messages: [{ role: "user", content: userPrompt }],
+    maxTokens: 1400,
+    effort: "medium",
+  });
 });
 
 // ===== MVRV (Market Value to Realized Value) จาก bitcoin-data.com (ฟรี, BTC) =====
