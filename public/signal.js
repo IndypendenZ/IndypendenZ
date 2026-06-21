@@ -167,29 +167,30 @@ function renderOrder() {
   }
 }
 
-// Backtest 2 ปี: รวมเทรดของทุกเหรียญที่แสดงอยู่
+// Backtest ตลอดประวัติ: รวมเทรดของทุกเหรียญที่แสดงอยู่
 function renderBacktest2y() {
   const list = shownCoins();
   const all = [];
   list.forEach((c) =>
-    (c.trades2y?.list || []).filter((t) => !t.open).forEach((t) => all.push(t))
+    (c.bt?.list || []).filter((t) => !t.open).forEach((t) => all.push(t))
   );
   const n = all.length;
   const wins = all.filter((t) => t.ret > 0).length;
   const wr = n ? (wins / n) * 100 : 0;
   const avg = n ? (all.reduce((a, b) => a + b.ret, 0) / n) * 100 : 0;
   const wrCls = wr >= 50 ? "g" : "r";
+  const maxYears = Math.max(0, ...list.map((c) => c.bt?.years || 0));
   $("#bt2y-head").innerHTML = n
-    ? `โอกาสกำไร <b class="${wrCls}">${wr.toFixed(0)}%</b> · จาก <b>${n}</b> เทรด (${wins} ชนะ) · กำไรเฉลี่ย <b class="${avg >= 0 ? "g" : "r"}">${avg >= 0 ? "+" : ""}${avg.toFixed(1)}%</b>/เทรด`
-    : "ยังไม่มีเทรดที่จบในช่วง 2 ปี";
+    ? `โอกาสกำไร <b class="${wrCls}">${wr.toFixed(0)}%</b> · จาก <b>${n}</b> เทรด (${wins} ชนะ) · กำไรเฉลี่ย <b class="${avg >= 0 ? "g" : "r"}">${avg >= 0 ? "+" : ""}${avg.toFixed(1)}%</b>/เทรด · ประวัติสูงสุด ~${maxYears.toFixed(1)} ปี`
+    : "ยังไม่มีเทรดที่จบ";
 
   const rows = list
-    .filter((c) => c.trades2y && c.trades2y.n > 0)
-    .sort((a, b) => b.trades2y.totalRet - a.trades2y.totalRet);
+    .filter((c) => c.bt && c.bt.n > 0)
+    .sort((a, b) => b.bt.totalRet - a.bt.totalRet);
   $("#bt2y-body").innerHTML = rows.length
     ? rows
         .map((c) => {
-          const t = c.trades2y;
+          const t = c.bt;
           const w = (t.wins / t.n) * 100;
           return `<tr>
             <td class="csym">${c.sym}</td>
@@ -201,7 +202,7 @@ function renderBacktest2y() {
           </tr>`;
         })
         .join("")
-    : `<tr><td colspan="6" class="loading">ไม่มีเทรดในช่วง 2 ปี</td></tr>`;
+    : `<tr><td colspan="6" class="loading">ไม่มีเทรด</td></tr>`;
 }
 
 const consensus = (c) => Object.values(c.signals).filter((s) => s === "LONG").length;

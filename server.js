@@ -545,9 +545,9 @@ function computeCoin(sym, closes, times) {
     }
   }
 
-  // backtest per-trade ช่วง 2 ปีล่าสุด: เข้าวันแรกของสัญญาณ ถือจนจบ
+  // backtest per-trade ตลอดประวัติ: เข้าวันแรกของสัญญาณ ถือจนจบ
   const FEE = 0.0004;
-  const winStart = Math.max(0, closes.length - 730);
+  const winStart = 0; // ใช้ข้อมูลทั้งหมดเท่าที่มี (รวมตลาดหมี)
   let st2 = "CASH";
   let eIdx2 = null;
   const tradeList = [];
@@ -578,11 +578,12 @@ function computeCoin(sym, closes, times) {
     });
   }
   const closed = tradeList.filter((t) => !t.open);
-  const trades2y = {
+  const bt = {
     n: closed.length,
     wins: closed.filter((t) => t.ret > 0).length,
     avgRet: closed.length ? closed.reduce((a, b) => a + b.ret, 0) / closed.length : 0,
     totalRet: tradeList.reduce((a, b) => a * (1 + b.ret), 1) - 1,
+    years: (closes.length - 1) / 365.25,
     list: tradeList,
   };
 
@@ -594,7 +595,7 @@ function computeCoin(sym, closes, times) {
     avgLoss,
     annVol: annualVol(closes),
     entry,
-    trades2y,
+    bt,
     signals: {
       rsi: strat.rsi.state,
       rsiEma: strat.rsiEma.state,
@@ -761,7 +762,7 @@ app.get("/api/signal", async (_req, res) => {
     const coins = [];
     for (const { sym: base, vol } of symbols) {
       try {
-        const { closes, times } = await binanceDaily(base + "USDT", 2); // ~2000 แท่ง
+        const { closes, times } = await binanceDaily(base + "USDT", 4); // เท่าที่ Binance มี (~สูงสุด 9 ปี)
         if (closes.length < 60) continue;
         const coin = { ...computeCoin(base, closes, times), vol };
         coin.pass = coin.years >= PASS_MIN_YEARS && coin.annVol <= PASS_MAX_VOL;
