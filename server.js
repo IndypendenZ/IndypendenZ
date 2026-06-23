@@ -1211,6 +1211,140 @@ app.get("/api/mvrv", async (_req, res) => {
   }
 });
 
+// ===== ต้นทุนการผลิต BTC (Bitcoin production cost) vs ราคา =====
+// แบบจำลองต้นทุนค่าไฟในการขุด:
+//   ต้นทุน/BTC = (hashrate × ประสิทธิภาพ J/TH × วินาที/วัน → kWh) × ค่าไฟ ÷ BTC ที่ขุดได้ต่อวัน
+const COST_ELEC_LOW = 0.03; // ค่าไฟถูก (best case)
+const COST_ELEC_MID = 0.05; // ค่าไฟปกติ (ค่ากลาง)
+const COST_ELEC_HIGH = 0.05; // ค่าไฟปกติ (worst case = เครื่องเฉลี่ยเครือข่าย)
+const COST_GOOD_FACTOR = 0.6; // เครื่องรุ่นใหม่ประหยัดไฟ = ~60% ของ J/TH เฉลี่ยเครือข่าย
+
+// ประสิทธิภาพเฉลี่ยเครือข่าย (J/TH) ตามปี — ดีขึ้นเรื่อยๆ (ค่าประมาณการ)
+const COST_EFF_ANCHORS = [
+  [2013, 6000], [2014, 2200], [2015, 1100], [2016, 600], [2017, 320],
+  [2018, 170], [2019, 115], [2020, 80], [2021, 60], [2022, 48],
+  [2023, 40], [2024, 33], [2025, 30], [2026, 28],
+];
+function netEffJTH(yr) {
+  const a = COST_EFF_ANCHORS;
+  if (yr <= a[0][0]) return a[0][1];
+  if (yr >= a[a.length - 1][0]) return a[a.length - 1][1];
+  for (let i = 1; i < a.length; i++) {
+    if (yr <= a[i][0]) {
+      const [y0, e0] = a[i - 1];
+      const [y1, e1] = a[i];
+      const f = (yr - y0) / (y1 - y0);
+      return Math.exp(Math.log(e0) + f * (Math.log(e1) - Math.log(e0))); // interpolate แบบ log
+    }
+  }
+  return a[a.length - 1][1];
+}
+
+const COST_HALVINGS = [
+  [Date.UTC(2009, 0, 3), 50],
+  [Date.UTC(2012, 10, 28), 25],
+  [Date.UTC(2016, 6, 9), 12.5],
+  [Date.UTC(2020, 4, 11), 6.25],
+  [Date.UTC(2024, 3, 20), 3.125],
+  [Date.UTC(2028, 2, 1), 1.5625],
+];
+function blockRewardAt(ms) {
+  let r = 50;
+  for (const [t, v] of COST_HALVINGS) if (ms >= t) r = v;
+  return r;
+}
+
+// ต้นทุน/BTC จาก hashrate (TH/s), ประสิทธิภาพ (J/TH), ค่าไฟ ($/kWh), block reward
+function costPerBTC(hashTHs, jth, elec, reward) {
+  const dailyKWh = (hashTHs * jth * 86400) / 3.6e6; // J/วัน → kWh/วัน
+  const btcPerDay = 144 * reward; // ~144 บล็อก/วัน
+  return (dailyKWh * elec) / btcPerDay;
+}
+
+// ดึงกราฟจาก blockchain.info (ฟรี ไม่ต้องมี key) — [{x: unixSec, y: number}]
+async function bcChart(name) {
+  const r = await fetch(
+    `https://api.blockchain.info/charts/${name}?timespan=all&format=json&sampled=false&cors=true`,
+    { headers: { accept: "application/json", "user-agent": BROWSER_UA } }
+  );
+  if (!r.ok) throw new Error(`blockchain.info ${name} ${r.status}`);
+  const j = await r.json();
+  if (!Array.isArray(j.values)) throw new Error(`blockchain.info ${name}: รูปแบบข้อมูลผิด`);
+  return j.values;
+}
+
+app.get("/api/btc-cost", async (_req, res) => {
+  const key = "btc-cost";
+  const cached = getCached(key, 6 * 3600_000); // แคช 6 ชม.
+  if (cached) return res.json(cached);
+  try {
+    const [priceVals, hashVals] = await Promise.all([
+      bcChart("market-price"),
+      bcChart("hash-rate"),
+    ]);
+    if (priceVals.length < 100 || hashVals.length < 50)
+      throw new Error("ข้อมูลจาก blockchain.info ไม่พอ");
+
+    // hashrate: เรียงตามเวลา เพื่อ forward-fill ให้ตรงกับวันที่ของราคา
+    const hr = hashVals.map((p) => ({ t: p.x, y: p.y })).sort((a, b) => a.t - b.t);
+    let hi = 0;
+    const series = [];
+    for (const p of priceVals) {
+      const price = p.y;
+      if (!price || price <= 0) continue;
+      const ms = p.x * 1000;
+      while (hi + 1 < hr.length && hr[hi + 1].t <= p.x) hi++;
+      const hashTHs = hr[hi] ? hr[hi].y : null;
+      if (!hashTHs || hashTHs <= 0) continue;
+      const yr = ms / 31557600000 + 1970; // ปีแบบเศษ
+      const reward = blockRewardAt(ms);
+      const netJ = netEffJTH(yr);
+      const goodJ = netJ * COST_GOOD_FACTOR;
+      series.push({
+        t: new Date(ms).toISOString().slice(0, 10),
+        price,
+        low: costPerBTC(hashTHs, goodJ, COST_ELEC_LOW, reward), // best (ถูกสุด)
+        mid: costPerBTC(hashTHs, goodJ, COST_ELEC_MID, reward),
+        high: costPerBTC(hashTHs, netJ, COST_ELEC_HIGH, reward), // worst (แพงสุด)
+        hash: hashTHs,
+        reward,
+      });
+    }
+    if (!series.length) throw new Error("คำนวณต้นทุนไม่ได้");
+
+    const cur = series[series.length - 1];
+    const nowYr = Date.now() / 31557600000 + 1970;
+    const data = {
+      current: {
+        t: cur.t,
+        price: cur.price,
+        low: cur.low,
+        mid: cur.mid,
+        high: cur.high,
+        hash: cur.hash,
+        reward: cur.reward,
+        marginMid: cur.price / cur.mid - 1,
+      },
+      assumptions: {
+        elecLow: COST_ELEC_LOW,
+        elecMid: COST_ELEC_MID,
+        elecHigh: COST_ELEC_HIGH,
+        netJTH: Math.round(netEffJTH(nowYr)),
+        goodJTH: Math.round(netEffJTH(nowYr) * COST_GOOD_FACTOR),
+      },
+      halvings: ["2012-11-28", "2016-07-09", "2020-05-11", "2024-04-20"],
+      series,
+      updatedAt: Date.now(),
+    };
+    setCached(key, data);
+    res.json(data);
+  } catch (e) {
+    const stale = getStale(key);
+    if (stale) return res.json(stale);
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // helper: สตรีมคำตอบจาก Claude ออกทาง response
 async function streamClaude(res, { system, messages, maxTokens = 1200, effort = "low" }) {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");

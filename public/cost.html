@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ต้นทุนการผลิต BTC · vs ราคาตลาด</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,500&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/signal.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="back" href="/">← กลับแดชบอร์ด</a>
+      <a class="back" href="/mvrv.html" style="margin-left:14px">MVRV →</a>
+      <a class="back" href="/signal.html" style="margin-left:14px">RSI Signal →</a>
+
+      <header class="hero">
+        <div class="hero-main">
+          <div class="eyebrow">BITCOIN PRODUCTION COST</div>
+          <h1><span class="btc">₿</span> ต้นทุนการผลิต BTC</h1>
+          <p class="lead">
+            ประมาณ<em class="hl">ต้นทุนค่าไฟในการขุด 1 BTC</em> เทียบกับราคาตลาด —
+            คำนวณจาก hashrate เครือข่าย + block reward (halving) + ประสิทธิภาพเครื่องขุดตามยุค
+            · ราคาต่ำกว่าต้นทุน = นักขุดขาดทุน (ในอดีตมักใกล้จุดต่ำสุดของรอบ)
+          </p>
+        </div>
+        <div class="hero-meta">
+          <div id="clock" class="clock">—</div>
+          <div class="src">data · blockchain.info · BTC</div>
+        </div>
+      </header>
+
+      <section class="order-box">
+        <div class="order-label">สรุป ณ ตอนนี้</div>
+        <h2 id="cost-headline">—</h2>
+        <p id="cost-sub" class="order-sub"></p>
+      </section>
+
+      <div class="stat-cards">
+        <div class="stat">
+          <div class="k">ต้นทุนกลาง/BTC</div>
+          <div class="v" id="mid-val">—</div>
+          <div class="s" id="mid-sub">ค่ากลาง · ไฟ $0.05/kWh</div>
+        </div>
+        <div class="stat">
+          <div class="k">ราคา BTC</div>
+          <div class="v" id="price-val">—</div>
+          <div class="s" id="price-sub">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">ช่วงต้นทุน (RANGE)</div>
+          <div class="v" id="range-val" style="font-size:22px">—</div>
+          <div class="s" id="range-sub">best (เครื่องดี+ไฟถูก) → worst (เฉลี่ยเครือข่าย)</div>
+        </div>
+        <div class="stat">
+          <div class="k">HASHRATE</div>
+          <div class="v" id="hash-val">—</div>
+          <div class="s" id="hash-sub">—</div>
+        </div>
+      </div>
+
+      <div class="grid-controls">
+        <div class="sort-seg" id="tf-seg">
+          <button data-tf="90">90D</button>
+          <button data-tf="365">1Y</button>
+          <button data-tf="730">2Y</button>
+          <button data-tf="1460">4Y</button>
+          <button data-tf="0" class="active">MAX</button>
+        </div>
+        <div class="sort-seg" id="gran-seg">
+          <button data-gran="month" class="active">รายเดือน</button>
+          <button data-gran="day">รายวัน</button>
+        </div>
+      </div>
+
+      <div id="statusbar" class="statusbar">กำลังโหลดข้อมูล…</div>
+
+      <h3 class="chart-title"><span class="btc">●</span> ราคา BTC vs ต้นทุนการผลิต (range) · log scale</h3>
+      <div class="mvrv-chart">
+        <canvas id="chart"></canvas>
+      </div>
+      <p class="filter-note" id="chart-note"></p>
+
+      <div class="two-col">
+        <div class="info-box">
+          <h3>อ่านกราฟยังไง</h3>
+          <ul>
+            <li><b>เส้นเข้ม</b> = ราคาตลาด BTC</li>
+            <li><b style="color:#c9763f">แถบสีส้ม</b> = ช่วงต้นทุน (ขอบล่าง best case เครื่องดี+ไฟถูก, ขอบบน worst case เฉลี่ยเครือข่าย+ไฟปกติ)</li>
+            <li><b style="color:#c9763f">เส้นประ</b> = ต้นทุนกลาง</li>
+            <li><b style="color:#6b78e0">เส้นน้ำเงินประ</b> = วัน Halving (block reward ÷2)</li>
+            <li><b class="r">พื้นแดง / จุดแดง</b> = ราคาต่ำกว่าต้นทุน best case (นักขุดขาดทุนแน่นอน)</li>
+          </ul>
+        </div>
+        <div class="info-box">
+          <h3>ใช้ดูยังไง</h3>
+          <ul>
+            <li>ราคา<b>ใกล้/ต่ำกว่าขอบล่าง</b> = นักขุดเริ่มขาดทุน เครื่องเก่าทยอยปิด · ในอดีตมักเป็นโซนจุดต่ำสุดของรอบ</li>
+            <li>ราคา<b>สูงกว่าแถบมาก</b> = นักขุดกำไรหนา · มักเป็นช่วงตลาดร้อน</li>
+            <li>หลัง Halving ต้นทุน<b>เด้งขึ้นทันที ~2 เท่า</b> (รางวัลลดครึ่ง) สังเกตแถบกระโดดที่เส้นน้ำเงิน</li>
+          </ul>
+        </div>
+      </div>
+
+      <footer class="foot">
+        CryptoDash · ต้นทุนการผลิต BTC · ข้อมูล blockchain.info ·
+        <b>เป็นแบบจำลองประมาณการ (ค่าไฟ/ประสิทธิภาพเป็นสมมติฐาน) เพื่อการศึกษาเท่านั้น</b> ·
+        ไม่ใช่คำแนะนำการลงทุน
+      </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="/cost.js"></script>
+  </body>
+</html>
